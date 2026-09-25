@@ -68,20 +68,42 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-      - name: Build ready-to-use bundle (no ZIM files)
+      # Third-party binaries are intentionally absent from git, so the
+      # release job has to fetch them or the bundle ships incomplete.
+      - name: Fetch kiwix static binaries
         run: |
-          chmod +x artifacts/KiwixUSB-linux-x86_64
+          bash scripts/fetch-kiwix-binaries.sh
+          # Not every kiwix-tools release publishes a Windows build.
+          pwsh -File scripts/fetch-kiwix-binaries.ps1 \
+            || echo "::warning::no official Windows kiwix build for this version"
+      - name: Build Docker offline image as legacy archive
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq skopeo
+          mkdir -p app/docker
+          # skopeo's docker-archive: transport writes the legacy layout that
+          # older NAS importers accept (docker save would emit OCI layout).
+          skopeo copy --quiet \
+            docker://ghcr.io/kiwix/kiwix-serve:latest \
+            docker-archive:app/docker/kiwix-serve-legacy.tar:ghcr.io/kiwix/kiwix-serve:latest
+          ls -lh app/docker/
+      - name: Assemble ready-to-use bundle
+        run: |
           cp -r launcher bundle-stage
           mkdir -p bundle-stage/app/gui bundle-stage/zim
           cp artifacts/KiwixUSB-linux-x86_64 bundle-stage/app/gui/
           cp artifacts/KiwixUSB.exe            bundle-stage/app/gui/
           cp src/KiwixUSB.py                    bundle-stage/app/gui/
           cp zim/README.md                      bundle-stage/zim/
+          cp zim/SHA256SUMS.example.txt         bundle-stage/
           cp -r docs                             bundle-stage/docs
-          [ -d app/linux-x86_64 ]   && cp -r app/linux-x86_64   bundle-stage/app/ || true
-          [ -d app/windows-x86_64 ] && cp -r app/windows-x86_64 bundle-stage/app/ || true
-          [ -d app/docker ]         && cp -r app/docker         bundle-stage/app/ || true
+          cp README.md                           bundle-stage/
+          for d in linux-x86_64 windows-x86_64 docker; do
+            if [ -d "app/$d" ]; then cp -r "app/$d" bundle-stage/app/; fi
+          done
           chmod +x bundle-stage/start.sh bundle-stage/stop.sh bundle-stage/install-fnos.sh
+          echo "--- bundle contents ---"
+          find bundle-stage -type f | sort
       - name: Assert no ZIM payloads slipped in
         run: |
           if find bundle-stage -iname '*.zim' | grep -q .; then
