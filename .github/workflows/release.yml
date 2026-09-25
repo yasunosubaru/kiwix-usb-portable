@@ -100,6 +100,10 @@ jobs:
           cat SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
         with:
+          # On a tag push github.ref is refs/tags/vX; on workflow_dispatch it
+          # is refs/heads/main, which the action rejects with
+          # "GitHub Releases requires a tag". Accept the dispatch input too.
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: |
             artifacts/KiwixUSB.exe
             artifacts/KiwixUSB-linux-x86_64
