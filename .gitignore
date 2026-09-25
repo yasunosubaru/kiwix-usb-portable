@@ -1,0 +1,38 @@
+# ---- 离线内容库：绝不进版本库 ----
+zim/*.zim
+zim/*.ZIM
+*.zim
+*.ZIM
+!zim/.gitkeep
+!zim/README.md
+
+# ---- 构建产物 ----
+dist/
+build/
+*.spec
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ---- 第三方二进制：由 scripts/fetch-* 下载获取，不入库 ----
+bundle/
+app/
+*.exe
+!launcher/*.cmd
+KiwixUSB
+KiwixUSB-linux-x86_64
+kiwix-serve-legacy.tar
+
+# ---- 校验基线：含本机路径，勿提交 ----
+zim/SHA256_*.txt
+SHA256_*.txt
+copy_zim.log
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp

@@ -1,0 +1,8 @@
+# SHA256 baseline template for zim/ -- copy to zim/SHA256_baseline.txt and fill in
+# Format: <64-hex-sha256>  <size-in-bytes>  <relative-file-name>
+# The GUI matches on the third field (file name), so paths stay portable.
+#
+# Get the values with:
+#   sha256sum zim/*.zim
+#   (PowerShell) Get-FileHash zim\*.zim -Algorithm SHA256
+
