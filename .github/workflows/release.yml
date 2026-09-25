@@ -101,3 +101,5 @@ jobs:
             artifacts/Kiwix-USB-bundle.zip
           generate_release_notes: true
           fail_on_unmatched_files: true
+          # Re-running a tag must not fail on "asset already exists"
+          overwrite_files: true
