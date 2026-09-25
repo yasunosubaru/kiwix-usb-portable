@@ -62,8 +62,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+        # Deliberately no `ref:` here. Pinning this to the release tag makes
+        # workflow_dispatch build the *tag's* source, so fixes landed on main
+        # are silently skipped. The tag is only a publishing target and is
+        # passed to the release step as `tag_name` instead.
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -135,8 +137,14 @@ jobs:
           cd bundle-stage
           zip -qr ../artifacts/Kiwix-USB-bundle.zip .
           cd ../artifacts
+          # The standalone Docker tar is published as its own asset, so it
+          # must be present here to get a checksum too -- otherwise the
+          # release ships 5 assets but only 3 are covered by SHA256SUMS.
+          cp ../app/docker/kiwix-serve-legacy.tar .
           test -f Kiwix-USB-bundle.zip || { echo "::error::bundle zip missing"; exit 1; }
+          test -f kiwix-serve-legacy.tar  || { echo "::error::docker tar missing"; exit 1; }
           sha256sum * > SHA256SUMS.txt
+          echo "--- checksums ---"
           cat SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
         with:
@@ -147,6 +155,7 @@ jobs:
           files: |
             artifacts/KiwixUSB.exe
             artifacts/KiwixUSB-linux-x86_64
+            artifacts/kiwix-serve-legacy.tar
             artifacts/SHA256SUMS.txt
             artifacts/Kiwix-USB-bundle.zip
           generate_release_notes: true
