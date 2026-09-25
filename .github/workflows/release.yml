@@ -70,12 +70,13 @@ jobs:
           merge-multiple: true
       # Third-party binaries are intentionally absent from git, so the
       # release job has to fetch them or the bundle ships incomplete.
+      # BUNDLE_DIR must point at the repo root: the fetch scripts default
+      # to <repo>/bundle, while the assemble step reads from app/.
       - name: Fetch kiwix static binaries
         run: |
-          bash scripts/fetch-kiwix-binaries.sh
-          # Not every kiwix-tools release publishes a Windows build.
-          pwsh -File scripts/fetch-kiwix-binaries.ps1 \
-            || echo "::warning::no official Windows kiwix build for this version"
+          BUNDLE_DIR="$GITHUB_WORKSPACE" bash scripts/fetch-kiwix-binaries.sh
+          BUNDLE_DIR="$GITHUB_WORKSPACE" pwsh -File scripts/fetch-kiwix-binaries.ps1 \
+            || echo "::warning::could not fetch a Windows kiwix build"
       - name: Build Docker offline image as legacy archive
         run: |
           sudo apt-get update -qq
@@ -104,6 +105,23 @@ jobs:
           chmod +x bundle-stage/start.sh bundle-stage/stop.sh bundle-stage/install-fnos.sh
           echo "--- bundle contents ---"
           find bundle-stage -type f | sort
+      - name: Assert the bundle is actually complete
+        run: |
+          missing=0
+          for f in app/gui/KiwixUSB.exe app/gui/KiwixUSB-linux-x86_64 \
+                   app/linux-x86_64/kiwix-serve app/windows-x86_64/kiwix-serve.exe \
+                   app/docker/kiwix-serve-legacy.tar start.sh start-gui.cmd; do
+            if [ -f "bundle-stage/$f" ]; then
+              echo "  OK      $f"
+            else
+              echo "  MISSING $f"
+              missing=1
+            fi
+          done
+          if [ $missing -ne 0 ]; then
+            echo "::error::bundle is incomplete - a published bundle with missing parts is worse than no bundle"
+            exit 1
+          fi
       - name: Assert no ZIM payloads slipped in
         run: |
           if find bundle-stage -iname '*.zim' | grep -q .; then
