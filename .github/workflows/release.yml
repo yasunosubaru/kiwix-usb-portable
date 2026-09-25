@@ -90,8 +90,14 @@ jobs:
           echo "OK: no ZIM files in bundle"
       - name: Package + checksums
         run: |
-          cd bundle-stage && zip -qr ../Kiwix-USB-bundle.zip . && cd ..
-          cd artifacts && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+          # NOTE: the zip must land INSIDE artifacts/, which is what the
+          # release step globs. "../" from bundle-stage is the repo root.
+          cd bundle-stage
+          zip -qr ../artifacts/Kiwix-USB-bundle.zip .
+          cd ../artifacts
+          test -f Kiwix-USB-bundle.zip || { echo "::error::bundle zip missing"; exit 1; }
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
         with:
           files: |
