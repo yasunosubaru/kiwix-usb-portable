@@ -14,7 +14,23 @@
 | 源码 | <https://github.com/kiwix/kiwix-tools> |
 | 下载 | <https://download.kiwix.org/release/kiwix-tools/> |
 | 许可 | **GPL-3.0-or-later** |
-| 本项目使用版本 | 3.8.2（`kiwix-serve` / `kiwix-manage` / `kiwix-search`）|
+| 本项目使用版本 | 见下表 |
+
+### 平台版本不一致（上游现状）
+
+kiwix-tools **不保证每个平台在同一版本同时发布**。`scripts/fetch-kiwix-binaries.*`
+因此会读取官方索引，自动选用该平台**实际存在的最新版本**，并在回退时给出警告。
+
+以 3.8.2 为例：
+
+| 平台 | 采用版本 | 说明 |
+|---|---|---|
+| Linux x86_64 / aarch64 | 3.8.2 | 与源码包同版本 |
+| macOS x86_64 / arm64 | 3.8.2 | 同上 |
+| **Windows x86_64** | **3.8.1** | 上游 3.8.2 **未发布 Windows 构建**，回退到最新可用的 3.8.1 |
+
+GUI 启动器与 kiwix-serve 之间没有版本耦合（它们只是通过命令行和 HTTP 交互），
+因此这一补丁级差异不影响功能；`SHA256SUMS.txt` 记录了实际分发文件的哈希。
 
 包含：
 - `kiwix-tools_linux-x86_64-3.8.2.tar.gz` → 静态 ELF，部署于 `app/linux-x86_64/`
