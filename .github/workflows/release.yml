@@ -52,7 +52,7 @@ jobs:
           $stage = "${{ runner.temp }}\stub"
           New-Item -ItemType Directory -Force -Path "$stage\zim", "$stage\app\gui" | Out-Null
           Copy-Item dist\KiwixUSB.exe "$stage\app\gui\"
-          Copy-Item dist\launcher\Kiwix.exe "$stage\"
+          Copy-Item dist\Kiwix.exe "$stage\"
           $p = Start-Process "$stage\Kiwix.exe" -WorkingDirectory $stage -PassThru
           $null = $p.WaitForExit(30000)
           if ($p.ExitCode -ne 0) { throw "launcher exit code $($p.ExitCode)" }
