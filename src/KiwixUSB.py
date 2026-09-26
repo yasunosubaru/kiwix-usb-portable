@@ -563,10 +563,14 @@ class KiwixApp(tk.Tk):
 
     def open_browser(self):
         if self.port and http_alive(self.port):
+            # 用回环地址而不是界面上显示的局域网地址：浏览器就在本机，而
+            # Windows 防火墙默认拦截入站连接，http://<局域网IP>:<端口>/ 可能
+            # 连提供服务的这台机器自己都访问不了。回环地址永不被防火墙拦。
+            #
             # kiwix 首页脚本在 URL 无 # 参数时，会按「浏览器界面语言」自动加语言过滤
             # （中文浏览器 -> 只显示 zho 那本），并把过滤状态写进 cookie 保留一天。
             # 带上 #lang= 即可跳过自动过滤，显示全部书目。
-            webbrowser.open(self.url_var.get() + "#lang=")
+            webbrowser.open("http://127.0.0.1:%d#lang=" % self.port)
         else:
             self.set_status("服务未运行或无响应", WARN)
 
@@ -694,7 +698,8 @@ class KiwixApp(tk.Tk):
             self.btn_stop.config(state="normal")
             self.btn_open.config(state="normal")
             self.port_entry.config(state="disabled")
-            self.set_status("本机已响应 · 其他设备请用上方地址访问（受防火墙/网络影响）", OK)
+            self.set_status(
+                "运行中 · 本机请用 http://127.0.0.1:%d 打开，其他设备用上方地址" % port, OK)
         else:
             self.url_var.set("—")
             self.port = None

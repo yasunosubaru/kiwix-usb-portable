@@ -33,6 +33,9 @@ public sealed class KiwixService : IDisposable
     private readonly Dictionary<string, PreflightItem> _preflight = new();
     private readonly Dictionary<string, (string Text, PreflightState State)> _integrity = new();
 
+    /// <summary>How long to wait for the server to answer before giving up on a clean start.</summary>
+    private const int StartupProbeSeconds = 25;
+
     public event Action<string>? LogLine;
     public event Action? Stopped;
     public event Action<int>? Exited;
@@ -151,27 +154,66 @@ public sealed class KiwixService : IDisposable
         if (_proc is null) return StartResult.LaunchFailed("进程未能创建");
 
         ActivePort = port;
-        _proc.EnableRaisingEvents = true;
-        _proc.Exited += (_, _) =>
+        var started = _proc;
+        started.EnableRaisingEvents = true;
+        started.Exited += (_, _) =>
         {
-            var code = SafeExitCode(_proc);
+            // Read `started`, not the _proc field: a second start would have
+            // overwritten the field, and this handler would then report the exit
+            // code of an unrelated process.
+            var code = SafeExitCode(started);
             Exited?.Invoke(code);
-            Cleanup();
+            if (ReferenceEquals(_proc, started)) Cleanup();
         };
 
+        // Everything the child prints, kept so a startup crash can be explained.
+        var captured = new System.Collections.Concurrent.ConcurrentQueue<string>();
         _ = Task.Run(async () =>
         {
             try
             {
-                var err = _proc.StandardError.ReadToEndAsync(ct);
-                while (await _proc.StandardOutput.ReadLineAsync(ct) is { } line)
+                var err = started.StandardError.ReadToEndAsync(ct);
+                while (await started.StandardOutput.ReadLineAsync(ct) is { } line)
+                {
+                    if (captured.Count > 200) captured.TryDequeue(out _);
+                    captured.Enqueue(line);
                     LogLine?.Invoke(line);
+                }
                 var e = await err;
-                if (!string.IsNullOrWhiteSpace(e)) LogLine?.Invoke(e);
+                if (!string.IsNullOrWhiteSpace(e))
+                {
+                    foreach (var line in e.Split('\n'))
+                    {
+                        if (captured.Count > 200) captured.TryDequeue(out _);
+                        captured.Enqueue(line);
+                    }
+                    LogLine?.Invoke(e);
+                }
             }
             catch { }
         }, ct);
 
+        // A live process is not a serving server. Reporting success here is what
+        // made the first release look broken: kiwix-serve would die a moment
+        // later and the window kept claiming everything was fine.
+        var deadline = DateTime.UtcNow.AddSeconds(StartupProbeSeconds);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (started.HasExited)
+            {
+                var code = SafeExitCode(started);
+                var tail = string.Join('\n', captured.Reverse().Take(6));
+                LogLine?.Invoke($"!! 启动后立即退出，返回码 {code}");
+                Cleanup();
+                return StartResult.Died(code, tail);
+            }
+            if (BundleLayout.HttpAlive(port, 800)) return StartResult.Ok(port);
+            await Task.Delay(300, ct);
+        }
+
+        // Still running but not answering yet. A 100 GB+ library can take a
+        // while to open, and the caller shows "starting" rather than failing.
+        LogLine?.Invoke($"服务进程已启动，{StartupProbeSeconds} 秒内尚未响应，请稍候 ...");
         return StartResult.Ok(port);
     }
 
@@ -287,10 +329,12 @@ public sealed class KiwixService : IDisposable
 
 public enum StartResultKind
 {
-    Ok, AlreadyRunning, MissingBinary, UnsupportedPlatform, NoLibrary, LowMemory, LaunchFailed
+    Ok, AlreadyRunning, MissingBinary, UnsupportedPlatform, NoLibrary, LowMemory,
+    LaunchFailed, DiedDuringStartup
 }
 
-public readonly record struct StartResult(StartResultKind Kind, int Port = 0, double MemoryGb = 0, string Message = "")
+public readonly record struct StartResult(StartResultKind Kind, int Port = 0, double MemoryGb = 0,
+                                          string Message = "", int ExitCode = 0)
 {
     public static StartResult Ok(int port) => new(StartResultKind.Ok, port);
     public static StartResult AlreadyRunning => new(StartResultKind.AlreadyRunning);
@@ -299,4 +343,8 @@ public readonly record struct StartResult(StartResultKind Kind, int Port = 0, do
     public static StartResult NoLibrary => new(StartResultKind.NoLibrary);
     public static StartResult LowMemory(double gb) => new(StartResultKind.LowMemory, MemoryGb: gb);
     public static StartResult LaunchFailed(string m) => new(StartResultKind.LaunchFailed, Message: m);
+
+    /// <summary>The process came up and then quit before it ever served a request.</summary>
+    public static StartResult Died(int exitCode, string output) =>
+        new(StartResultKind.DiedDuringStartup, Message: output, ExitCode: exitCode);
 }

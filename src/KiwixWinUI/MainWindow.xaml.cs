@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _verifyCts;
     private DateTime? _startedAt;
     private bool _healthOk;
+    private bool _starting;
 
     public MainWindow()
     {
@@ -118,9 +119,35 @@ public sealed partial class MainWindow : Window
 
     private async void OnStartClick(object sender, RoutedEventArgs e)
     {
+        if (_starting)
+        {
+            SetStatus("正在启动，请稍候 ...", "#F5A623");
+            return;
+        }
         if (_service.IsRunning) { SetStatus("服务已在运行", "#F5A623"); return; }
 
-        var result = await _service.StartAsync(RequestedPort);
+        _starting = true;
+        StartButton.IsEnabled = false;
+        SetStatus("正在启动 kiwix-serve ...", "#4C8DFF");
+        try
+        {
+            await StartCore();
+        }
+        finally
+        {
+            _starting = false;
+            // Only re-enable if we did not end up running; OnRunning owns the
+            // button state once the service is up.
+            if (!_service.IsRunning) StartButton.IsEnabled = true;
+        }
+    }
+
+    private async Task StartCore()
+    {
+        // Captured before OnRunning rewrites PortBox, otherwise the "did the port
+        // move?" comparison below would always be false.
+        var wanted = RequestedPort;
+        var result = await _service.StartAsync(wanted);
         switch (result.Kind)
         {
             case StartResultKind.MissingBinary:
@@ -153,15 +180,31 @@ public sealed partial class MainWindow : Window
                 ShowNotice(InfoBarSeverity.Error, "启动失败",
                     result.Message + "\n\n应用没有修改任何文件或系统设置。");
                 return;
+            case StartResultKind.DiedDuringStartup:
+                // The single most confusing failure there is: the process came up
+                // and quit before serving anything. Say so plainly, and show what
+                // kiwix-serve printed, because the exit code alone means nothing.
+                ShowNotice(InfoBarSeverity.Error, "服务启动后立即退出",
+                    $"kiwix-serve 启动了，但在开始提供服务前就退出了（返回码 {result.ExitCode}）。\n\n"
+                  + "它的输出：\n" + (string.IsNullOrWhiteSpace(result.Message) ? "（无输出）" : result.Message)
+                  + "\n\n常见原因：\n· 杀毒软件拦截了 kiwix-serve.exe\n· 资料库文件不完整\n· 系统资源不足\n\n应用不会自动重试。");
+                SetStatus("启动失败，详见上方提示", "#FF5C5C");
+                return;
         }
 
         if (result.Kind != StartResultKind.Ok) return;
 
-        if (result.Port != RequestedPort)
+        // This is the step that flips the UI into the running state: address,
+        // badge, button enablement and the uptime clock. Without it the service
+        // comes up invisibly, "open library" stays disabled, and the window
+        // looks broken while kiwix-serve is happily serving pages.
+        OnRunning(result.Port);
+
+        if (result.Port != wanted)
         {
-            PortBox.Text = result.Port.ToString();
             ShowNotice(InfoBarSeverity.Warning, "端口已顺延",
-                $"端口 {RequestedPort} 被其它程序占用。\n本应用没有结束该程序，已改用 {result.Port}。");
+                $"端口 {wanted} 已被其它程序占用，本应用没有结束它，已自动改用 {result.Port}。\n\n"
+              + $"若 {wanted} 上是上次运行残留的服务，可先点「停止」再重新启动。");
         }
         await SelfCheckAsync(result.Port);
     }
@@ -172,10 +215,15 @@ public sealed partial class MainWindow : Window
     {
         if (_service.ActivePort == 0 || !BundleLayout.HttpAlive(_service.ActivePort)) return;
 
-        // kiwix's index script auto-applies a language filter derived from the
-        // browser UI language when the URL carries no fragment, and persists
+        // Open loopback, not the LAN address shown above. The browser is on this
+        // machine, and Windows Firewall blocks inbound connections by default,
+        // so http://<lan-ip>:<port>/ can be unreachable from the very machine
+        // serving it. Loopback is never firewalled.
+        //
+        // kiwix's index script also auto-applies a language filter derived from
+        // the browser UI language when the URL carries no fragment, and persists
         // it in a cookie. Appending an empty filter skips that entirely.
-        OpenUrl(UrlText.Text + "#lang=");
+        OpenUrl($"http://127.0.0.1:{_service.ActivePort}#lang=");
     }
 
     private void OnCopyUrlClick(object sender, RoutedEventArgs e)
@@ -233,7 +281,10 @@ public sealed partial class MainWindow : Window
     {
         _startedAt = DateTime.Now;
         _healthOk = false;
+        // The LAN address is what other devices need, so that is what we show.
+        // Opening the browser goes through loopback instead -- see OnOpenClick.
         UrlText.Text = $"http://{BundleLayout.LocalIp()}:{port}";
+        PortBox.Text = port.ToString();
         BadgeText.Text = "运行中";
         BadgeBorder.Background = new SolidColorBrush(Ui.Hex("#12351F"));
         BadgeText.Foreground = new SolidColorBrush(Ui.Hex("#3DDC84"));
@@ -242,7 +293,7 @@ public sealed partial class MainWindow : Window
         OpenButton.IsEnabled = true;
         PortBox.IsEnabled = false;
         Notice.IsOpen = false;
-        SetStatus("本机已响应 · 其他设备请用上方地址访问（受防火墙/网络影响）", "#3DDC84");
+        SetStatus($"运行中 · 本机请用 http://127.0.0.1:{port} 打开，其他设备用上方地址", "#3DDC84");
     }
 
     private void OnExited(int code)

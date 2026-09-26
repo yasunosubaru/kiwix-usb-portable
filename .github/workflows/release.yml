@@ -73,6 +73,15 @@ jobs:
           Write-Host "launch check OK (PID $($p.Id))"
           Stop-Process -Name KiwixWinUI -Force -ErrorAction SilentlyContinue
           Get-Process kiwix-serve -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+      - name: Drive the real start button
+        shell: pwsh
+        run: |
+          # There is no library on a runner, so the full running-state
+          # assertions are skipped, but the start button is still pressed: that
+          # is the path v1.1.0 shipped broken, and pressing it costs nothing.
+          # A crash or a dead button fails here instead of in a user's hands.
+          & ./scripts/test-gui-start.ps1 -Bundle "${{ github.workspace }}" -Exe "${{ runner.temp }}\winui\KiwixWinUI.exe"
+          if ($LASTEXITCODE -ne 0) { throw "GUI end-to-end test failed" }
       - uses: actions/upload-artifact@v4
         with:
           name: gui-winui

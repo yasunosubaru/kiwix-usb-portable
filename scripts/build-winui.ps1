@@ -25,11 +25,11 @@ if (-not $Output) { $Output = Join-Path $Root 'dist\KiwixWinUI' }
 Write-Host "project : $Project"
 Write-Host "output  : $Output"
 
-Write-Host "[1/3] dotnet publish"
+Write-Host "[1/4] dotnet publish"
 & dotnet publish $Project -c $Configuration -r win-x64 --self-contained true -o $Output
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 
-Write-Host "[2/3] verify output"
+Write-Host "[2/4] verify output"
 $required = @('KiwixWinUI.exe', 'KiwixWinUI.dll', 'KiwixWinUI.runtimeconfig.json')
 foreach ($f in $required) {
     $p = Join-Path $Output $f
@@ -40,17 +40,26 @@ foreach ($f in $required) {
 $files = Get-ChildItem $Output -Recurse -File
 Write-Host ("      {0} files, {1:N1} MB total" -f $files.Count, (($files | Measure-Object Length -Sum).Sum / 1MB))
 
-Write-Host "[3/3] launch check (no library needed)"
-$proc = Start-Process (Join-Path $Output 'KiwixWinUI.exe') -PassThru
-Start-Sleep -Seconds 12
-$alive = Get-Process KiwixWinUI -ErrorAction SilentlyContinue
-if ($alive) {
-    Write-Host "      OK window process alive (PID $($alive[0].Id))"
-    Stop-Process -Name KiwixWinUI -Force -ErrorAction SilentlyContinue
-} else {
-    throw "app did not stay alive"
+Write-Host "[3/4] headless self-test"
+$self = Start-Process (Join-Path $Output 'KiwixWinUI.exe') -ArgumentList '--selftest' -PassThru `
+        -RedirectStandardOutput "$Output\selftest.log" -RedirectStandardError "$Output\selftest.err"
+$null = $self.WaitForExit(300000)
+Get-Content "$Output\selftest.log" | ForEach-Object { Write-Host "      $_" }
+if ((Get-Content "$Output\selftest.log" -Raw) -notmatch 'RESULT: PASS') {
+    throw "self-test did not pass; see $Output\selftest.log"
 }
-Get-Process kiwix-serve -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+Write-Host "[4/4] GUI end-to-end test (presses the real buttons)"
+# Launching the window and running --selftest both pass while the start button
+# is completely broken, so the button path itself has to be driven. Skipped when
+# the bundle has no library, because the service cannot start without one.
+$zims = @(Get-ChildItem (Join-Path $Root '..\zim') -Filter '*.zim' -ErrorAction SilentlyContinue)
+if ($zims.Count -eq 0) {
+    Write-Warning "no .zim in the bundle, skipping the GUI end-to-end test"
+} else {
+    & (Join-Path $PSScriptRoot 'test-gui-start.ps1') -Exe (Join-Path $Output 'KiwixWinUI.exe') -Bundle (Resolve-Path (Join-Path $Root '..')).Path
+    if ($LASTEXITCODE -ne 0) { throw "GUI end-to-end test failed" }
+}
 
 Write-Host ""
 Write-Host "Done: $Output"
