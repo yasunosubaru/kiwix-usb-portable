@@ -96,9 +96,42 @@ jobs:
           path: ${{ runner.temp }}/dist/KiwixUSB-linux-x86_64
           if-no-files-found: error
 
+  build-kiwix-windows:
+    name: kiwix-serve (Windows x86_64, executed to verify)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      # This has to run on Windows, not on the ubuntu release job via pwsh.
+      # Only a Windows host can actually execute kiwix-serve.exe, and that is
+      # the only way to notice a build whose DLLs were left behind -- which is
+      # how v1.1.0 first shipped a kiwix-serve.exe that died with
+      # STATUS_DLL_NOT_FOUND the moment a user pressed "start service".
+      - name: Fetch official Windows binaries
+        shell: pwsh
+        run: |
+          $env:BUNDLE_DIR = $env:GITHUB_WORKSPACE
+          ./scripts/fetch-kiwix-binaries.ps1
+      - name: Prove the binary runs
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:GITHUB_WORKSPACE 'app\windows-x86_64\kiwix-serve.exe'
+          if (-not (Test-Path $exe)) { throw "kiwix-serve.exe was not fetched" }
+          $v = & $exe '--version' 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host "exit=$code"
+          Write-Host $v
+          if ($code -ne 0) { throw "kiwix-serve.exe --version failed: exit $code" }
+          if ($v -notmatch 'kiwix-tools') { throw "unexpected --version output" }
+          Get-ChildItem (Split-Path $exe) | Format-Table Name, Length -AutoSize
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kiwix-windows
+          path: app
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
-    needs: [build-windows, build-winui, build-linux]
+    needs: [build-windows, build-winui, build-linux, build-kiwix-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -133,11 +166,31 @@ jobs:
       # release job has to fetch them or the bundle ships incomplete.
       # BUNDLE_DIR must point at the repo root: the fetch scripts default
       # to <repo>/bundle, while the assemble step reads from app/.
-      - name: Fetch kiwix static binaries
+      - name: Fetch kiwix static binaries (Linux)
         run: |
           BUNDLE_DIR="$GITHUB_WORKSPACE" bash scripts/fetch-kiwix-binaries.sh
-          BUNDLE_DIR="$GITHUB_WORKSPACE" pwsh -File scripts/fetch-kiwix-binaries.ps1 \
-            || echo "::warning::could not fetch a Windows kiwix build"
+      - name: Restore the verified Windows kiwix binaries
+        # Comes from build-kiwix-windows, where the executable was actually
+        # run. The previous `pwsh ... || echo warning` swallowed fetch failures
+        # entirely, which is how a missing-DLL binary got published.
+        uses: actions/download-artifact@v4
+        with:
+          name: kiwix-windows
+          path: app
+      - name: Confirm both kiwix-serve builds are in place
+        run: |
+          for f in app/linux-x86_64/kiwix-serve app/windows-x86_64/kiwix-serve.exe; do
+            if [ -f "$f" ]; then
+              echo "  OK      $f  $(du -h "$f" | cut -f1)"
+            else
+              echo "::error::missing $f"; exit 1
+            fi
+          done
+          # A 3.x Windows build is only ~3.7 MB when it needs sibling DLLs;
+          # 10 MB means it is self-contained. Print the whole set either way,
+          # because this is exactly the detail that hid the v1.1.0 defect.
+          echo "  --- app/windows-x86_64 ---"
+          ls -l app/windows-x86_64/ | tail -n +2 | awk '{printf "    %-24s %10d\n", $9, $5}'
       - name: Build Docker offline image as legacy archive
         run: |
           sudo apt-get update -qq

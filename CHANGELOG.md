@@ -22,6 +22,19 @@ Windows 图形启动器重写为 **WinUI 3**；原 Python/tkinter 版作为轻�
 
 ### 修复
 
+- **Windows 版 `kiwix-serve.exe` 缺少配套 DLL，发布产物完全不可用**（严重）
+  - `scripts/fetch-kiwix-binaries.ps1` 解压后只拷贝 `kiwix-*.exe`，把归档里同目录的
+    DLL 全部丢弃。而 kiwix-tools **3.8.1 的 Windows 构建并非静态链接**：其 exe 仅约
+    3.7 MB，依赖同归档中的 DLL（自带静态链接的 3.7.0 约 10 MB/个，可作对照）
+  - 后果：`kiwix-serve.exe` 以 `0xC0000135 STATUS_DLL_NOT_FOUND` **瞬间退出**。
+    启动器本身能正常打开，所以前一轮验收没有发现；只有在用户点「启动服务」时才暴露
+  - 修复一：整目录拷贝（含 DLL），并在 Windows 主机上执行 `kiwix-serve.exe --version`
+    校验，失败即抛错
+  - 修复二：Windows 二进制抓取从 release job（ubuntu + pwsh，只能下载不能运行）
+    迁到新的 `build-kiwix-windows` job（`windows-latest`），下载后**真正执行一次**
+    再上传为 artifact
+  - 修复三：原先的 `pwsh ... || echo "::warning::"` 会把抓取失败静默降级为警告，
+    现已移除
 - `KiwixUSB.py`：补回模块级 `free_port()`（重写时误删，导致 `start_service` 逻辑重复）
 - 自检输出改为行缓冲，重定向到文件时不再因缓冲丢失尾部日志
 

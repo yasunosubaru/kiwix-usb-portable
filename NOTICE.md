@@ -35,6 +35,13 @@ kiwix-tools **不保证每个平台在同一版本同时发布**。`scripts/fetc
 | macOS x86_64 / arm64 | 3.8.2 | 同上 |
 | **Windows x86_64** | **3.8.1** | 上游 3.8.2 **未发布 Windows 构建**，回退到最新可用的 3.8.1 |
 
+**Windows 构建不是单文件**：3.8.x 的 `win-x86_64` 归档中，`kiwix-*.exe` 需要同目录下的
+配套 DLL 才能启动（3.7.0 及更早的版本是静态链接，单个 exe 约 10 MB；3.8.1 的 exe 仅约
+3.7 MB）。因此 `app/windows-x86_64/` 是一个**必须保持完整的目录**，只取 exe 会得到一个
+以 `STATUS_DLL_NOT_FOUND` 秒退的包。`scripts/fetch-kiwix-binaries.ps1` 会整目录拷贝，
+并在 Windows 上执行 `kiwix-serve.exe --version` 验证；CI 的 `build-kiwix-windows` job
+同样会执行一次，失败即阻断发布。
+
 GUI 启动器与 kiwix-serve 之间没有版本耦合（它们只是通过命令行和 HTTP 交互），
 因此这一补丁级差异不影响功能；`SHA256SUMS.txt` 记录了实际分发文件的哈希。
 
