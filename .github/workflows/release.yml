@@ -106,10 +106,29 @@ jobs:
         # workflow_dispatch build the *tag's* source, so fixes landed on main
         # are silently skipped. The tag is only a publishing target and is
         # passed to the release step as `tag_name` instead.
+      # One subdirectory per artifact, on purpose. merge-multiple would flatten
+      # all three into artifacts/, which (a) hides where the WinUI payload came
+      # from and (b) drops its 486 runtime files straight into the directory
+      # that the release step checksums and publishes.
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-          merge-multiple: true
+      # Assert the layout right away rather than discovering it three steps later.
+      - name: Assert every build job delivered its artifact
+        run: |
+          missing=0
+          for d in gui-windows gui-linux gui-winui; do
+            if [ -d "artifacts/$d" ]; then
+              echo "  OK      artifacts/$d  ($(find "artifacts/$d" -type f | wc -l) files)"
+            else
+              echo "  MISSING artifacts/$d"
+              missing=1
+            fi
+          done
+          test -f artifacts/gui-windows/KiwixUSB.exe            || { echo "::error::no KiwixUSB.exe"; missing=1; }
+          test -f artifacts/gui-linux/KiwixUSB-linux-x86_64     || { echo "::error::no KiwixUSB-linux-x86_64"; missing=1; }
+          test -f artifacts/gui-winui/KiwixWinUI.exe            || { echo "::error::no KiwixWinUI.exe"; missing=1; }
+          exit $missing
       # Third-party binaries are intentionally absent from git, so the
       # release job has to fetch them or the bundle ships incomplete.
       # BUNDLE_DIR must point at the repo root: the fetch scripts default
@@ -134,8 +153,8 @@ jobs:
         run: |
           cp -r launcher bundle-stage
           mkdir -p bundle-stage/app/gui bundle-stage/zim
-          cp artifacts/KiwixUSB-linux-x86_64 bundle-stage/app/gui/
-          cp artifacts/KiwixUSB.exe            bundle-stage/app/gui/
+          cp artifacts/gui-linux/KiwixUSB-linux-x86_64 bundle-stage/app/gui/
+          cp artifacts/gui-windows/KiwixUSB.exe            bundle-stage/app/gui/
           cp src/KiwixUSB.py                    bundle-stage/app/gui/
           cp zim/README.md                      bundle-stage/zim/
           cp zim/SHA256SUMS.example.txt         bundle-stage/
@@ -173,6 +192,15 @@ jobs:
             echo "::error::bundle is incomplete - a published bundle with missing parts is worse than no bundle"
             exit 1
           fi
+          # The WinUI 3 payload only works as a whole: a partial copy leaves a
+          # launcher that starts and then dies on a missing runtime DLL. It is
+          # ~480 files when complete, so anything near that is a broken copy.
+          n=$(find bundle-stage/app/gui/KiwixWinUI -type f | wc -l)
+          echo "  WinUI 3 runtime files: $n"
+          if [ "$n" -lt 300 ]; then
+            echo "::error::WinUI 3 payload is truncated ($n files, expected >= 300)"
+            exit 1
+          fi
       - name: Assert no ZIM payloads slipped in
         run: |
           if find bundle-stage -iname '*.zim' | grep -q .; then
@@ -189,12 +217,28 @@ jobs:
           # The standalone Docker tar is published as its own asset, so it
           # must be present here to get a checksum too -- otherwise the
           # release ships 5 assets but only 3 are covered by SHA256SUMS.
+          # The three build artifacts are copied up out of their per-artifact
+          # subdirectories so artifacts/ holds exactly the published set.
           cp ../app/docker/kiwix-serve-legacy.tar .
+          cp gui-windows/KiwixUSB.exe        .
+          cp gui-linux/KiwixUSB-linux-x86_64 .
           test -f Kiwix-USB-bundle.zip || { echo "::error::bundle zip missing"; exit 1; }
           test -f kiwix-serve-legacy.tar  || { echo "::error::docker tar missing"; exit 1; }
-          sha256sum * > SHA256SUMS.txt
-          echo "--- checksums ---"
+          # An explicit list, not `sha256sum *`: artifacts/ also holds the
+          # per-artifact subdirectories, and a glob would either try to hash
+          # them or silently miss an asset the release step still uploads.
+          ASSETS="Kiwix-USB-bundle.zip KiwixUSB.exe KiwixUSB-linux-x86_64 kiwix-serve-legacy.tar"
+          for a in $ASSETS; do
+            test -f "$a" || { echo "::error::missing asset $a"; exit 1; }
+          done
+          sha256sum $ASSETS > SHA256SUMS.txt
+          # The checksum file must cover every published asset and nothing else.
+          n=$(wc -l < SHA256SUMS.txt)
+          echo "--- checksums ($n lines) ---"
           cat SHA256SUMS.txt
+          if [ "$n" -ne 4 ]; then
+            echo "::error::expected 4 checksum lines, got $n"; exit 1
+          fi
       - uses: softprops/action-gh-release@v2
         with:
           # On a tag push github.ref is refs/tags/vX; on workflow_dispatch it
