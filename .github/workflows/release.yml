@@ -253,6 +253,10 @@ jobs:
           mkdir -p bundle-stage/app/gui bundle-stage/zim
           cp artifacts/gui-linux/KiwixUSB-linux-x86_64 bundle-stage/app/gui/
           cp artifacts/gui-windows/KiwixUSB.exe            bundle-stage/app/gui/
+          # The native launcher is the bundle's entry point: it sits at the root
+          # next to the ZIM directory, because that is the only place from which
+          # walking upwards finds zim/ plus app/ immediately.
+          cp artifacts/gui-windows/Kiwix.exe                bundle-stage/
           cp src/KiwixUSB.py                    bundle-stage/app/gui/
           cp zim/README.md                      bundle-stage/zim/
           cp zim/SHA256SUMS.example.txt         bundle-stage/
@@ -319,7 +323,6 @@ jobs:
           # subdirectories so artifacts/ holds exactly the published set.
           cp ../app/docker/kiwix-serve-legacy.tar .
           cp gui-windows/KiwixUSB.exe        .
-          cp gui-windows/Kiwix.exe            .
           cp gui-linux/KiwixUSB-linux-x86_64 .
           test -f Kiwix-USB-bundle.zip || { echo "::error::bundle zip missing"; exit 1; }
           test -f kiwix-serve-legacy.tar  || { echo "::error::docker tar missing"; exit 1; }
