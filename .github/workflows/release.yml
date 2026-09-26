@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build-windows:
-    name: Windows GUI (tkinter, single file)
+    name: Windows entry point + tkinter GUI
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,10 +33,37 @@ jobs:
           $f = Get-Item dist\KiwixUSB.exe
           if ($f.Length -lt 5MB) { throw "suspiciously small executable" }
           Write-Host "OK $($f.Length) bytes"
+      # The bundle is opened by double-clicking an .exe, so the entry point is a
+      # real native binary rather than a .cmd script. MSVC is already present on
+      # the runner, so this needs no extra setup.
+      - name: Build the native launcher
+        shell: pwsh
+        run: ./scripts/build-launcher.ps1 -Output dist/launcher
+      - name: The launcher must start the tkinter build it falls back to
+        shell: pwsh
+        run: |
+          # A real bundle, minus the WinUI payload, is exactly the trimmed layout
+          # a user ends up with after deleting the 166 MB folder. The launcher has
+          # to cope with that, and it has to do it without a console window.
+          $stage = "${{ runner.temp }}\stub"
+          New-Item -ItemType Directory -Force -Path "$stage\zim", "$stage\app\gui" | Out-Null
+          Copy-Item dist\KiwixUSB.exe "$stage\app\gui\"
+          Copy-Item dist\launcher\Kiwix.exe "$stage\"
+          $p = Start-Process "$stage\Kiwix.exe" -WorkingDirectory $stage -PassThru
+          $null = $p.WaitForExit(30000)
+          if ($p.ExitCode -ne 0) { throw "launcher exit code $($p.ExitCode)" }
+          Start-Sleep -Seconds 12
+          $gui = Get-Process KiwixUSB -ErrorAction SilentlyContinue
+          if (-not $gui) { throw "the launcher did not start the fallback GUI" }
+          Write-Host "fallback OK, KiwixUSB PID $($gui[0].Id)"
+          Stop-Process -Name KiwixUSB -Force -ErrorAction SilentlyContinue
+          Get-Process kiwix-serve -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         with:
           name: gui-windows
-          path: dist/KiwixUSB.exe
+          path: |
+            dist/KiwixUSB.exe
+            dist/launcher/Kiwix.exe
           if-no-files-found: error
 
   build-winui:
@@ -170,6 +197,7 @@ jobs:
           test -f artifacts/gui-windows/KiwixUSB.exe            || { echo "::error::no KiwixUSB.exe"; missing=1; }
           test -f artifacts/gui-linux/KiwixUSB-linux-x86_64     || { echo "::error::no KiwixUSB-linux-x86_64"; missing=1; }
           test -f artifacts/gui-winui/KiwixWinUI.exe            || { echo "::error::no KiwixWinUI.exe"; missing=1; }
+          test -f artifacts/gui-windows/Kiwix.exe               || { echo "::error::no Kiwix.exe launcher"; missing=1; }
           exit $missing
       # Third-party binaries are intentionally absent from git, so the
       # release job has to fetch them or the bundle ships incomplete.
@@ -240,7 +268,7 @@ jobs:
         run: |
           missing=0
           for f in app/gui/KiwixUSB.exe app/gui/KiwixUSB-linux-x86_64 \
-                   app/gui/KiwixWinUI/KiwixWinUI.exe \
+                   app/gui/KiwixWinUI/KiwixWinUI.exe Kiwix.exe \
                    app/linux-x86_64/kiwix-serve app/windows-x86_64/kiwix-serve.exe \
                    app/docker/kiwix-serve-legacy.tar start.sh start-gui.cmd; do
             if [ -f "bundle-stage/$f" ]; then
@@ -283,6 +311,7 @@ jobs:
           # subdirectories so artifacts/ holds exactly the published set.
           cp ../app/docker/kiwix-serve-legacy.tar .
           cp gui-windows/KiwixUSB.exe        .
+          cp gui-windows/Kiwix.exe            .
           cp gui-linux/KiwixUSB-linux-x86_64 .
           test -f Kiwix-USB-bundle.zip || { echo "::error::bundle zip missing"; exit 1; }
           test -f kiwix-serve-legacy.tar  || { echo "::error::docker tar missing"; exit 1; }

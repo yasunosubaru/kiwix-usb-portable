@@ -28,11 +28,19 @@
 ## 快速开始
 
 ### Windows
-双击 `launcher\start-gui.cmd` → 点「▶ 启动服务」→ 自动打开浏览器。
+**双击 `Kiwix.exe`** → 点「▶ 启动服务」→ 自动打开浏览器。
 
-启动器会优先使用 **WinUI 3** 版（`app/gui/KiwixWinUI/`），
-若该目录不存在则自动回退到 tkinter 单文件版（`app/gui/KiwixUSB.exe`）。
-两版功能与安全边界完全一致。
+`Kiwix.exe` 是整合包根目录的入口：一个约 130 KB 的原生 Win32 程序，
+不依赖 .NET、Python 或 Windows App Runtime。它只做一件事——
+找到整合包、启动图形界面、然后自己退出。
+
+- 优先启动 **WinUI 3** 版（`app/gui/KiwixWinUI/`）
+- 该目录不存在时（例如精简整包），自动回退到 tkinter 单文件版（`app/gui/KiwixUSB.exe`）
+- 两个都不存在时弹出对话框说明缺了什么，而不是静默失败
+
+图形界面有两版，功能与安全边界完全一致。`launcher/` 下另有
+`start-gui.cmd` / `启动Kiwix便携版.cmd` 两个脚本入口，作用相同，
+只是需要在有脚本宿主的环境里用。
 
 ### Linux 桌面
 ```bash
@@ -58,7 +66,8 @@ sudo sh install-fnos.sh      # 脚本名随发行版而定，见 docs/
 
 ```
 Kiwix-USB/
-├── start-gui.cmd              Windows 双击入口
+├── Kiwix.exe                  Windows 双击入口（原生 Win32，约 130 KB）
+├── start-gui.cmd              同上，脚本版备用
 ├── start.sh / stop.sh         Linux 命令行启停
 ├── install-fnos.sh            NAS 一键常驻部署（Docker）
 ├── library.xml
@@ -83,16 +92,19 @@ Kiwix-USB/
 git clone <this-repo>
 cd <this-repo>
 
-# 1) Windows WinUI 3 启动器
+# 1) Windows 入口（原生 Win32，双击用的那个）
+powershell -File scripts\build-launcher.ps1
+
+# 2) Windows WinUI 3 启动器
 powershell -File scripts\build-winui.ps1
 
-# 2) Windows / Linux tkinter 单文件启动器
+# 3) Windows / Linux tkinter 单文件启动器
 
-# 3) 下载 kiwix 官方静态二进制（不入库）
+# 4) 下载 kiwix 官方静态二进制（不入库）
 bash scripts/fetch-kiwix-binaries.sh          # Linux
 powershell -File scripts/fetch-kiwix-binaries.ps1   # Windows
 
-# 4) 打包 tkinter GUI
+# 5) 打包 tkinter GUI
 pip install -r requirements-build.txt
 python -m PyInstaller --onefile --windowed --name KiwixUSB src/KiwixUSB.py
 

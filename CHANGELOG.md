@@ -2,6 +2,31 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.0] - 2026-09-27
+
+Windows 入口从批处理脚本换成真正的原生 GUI 可执行文件。
+
+### 新增
+
+- **`Kiwix.exe`：整包根目录的原生 Win32 入口**（`src/launcher/winlauncher.c`）
+  - 约 130 KB，静态链接 CRT，只依赖 `user32.dll` / `kernel32.dll`。
+    U 盘场景要求「不装任何东西也能跑」，.NET / Python / Windows App Runtime
+    三者都不能作为入口的前提
+  - 定位整合包的规则与 `KiwixService.ResolveRoot` 一致：自自身目录向上找同时
+    包含 `zim\` 与 `app\` 的目录，两者不会对「整包在哪」产生分歧
+  - 优先启动 WinUI 3，缺失时回退 tkinter，两者都缺失时**弹窗说明缺了什么**，
+    而不是静默失败
+  - 启动后立即退出：GUI 是独立进程，关掉或杀掉这个壳不应连带停掉服务
+  - 编译期用 `/W4 /WX`，并断言产物的 PE subsystem 为 2（GUI）——
+    一个每次双击都闪一下黑框的入口，正是这个文件要消除的东西
+  - `scripts/build-launcher.ps1` 负责构建、清理中间产物、校验体积与 subsystem
+
+### 变更
+
+- 文档与整包结构以 `Kiwix.exe` 为正式入口，`launcher/*.cmd` 降为脚本版备用
+- CI `build-windows` job 增加：构建启动器 + 用「删掉 WinUI 目录的精简整包」
+  验证它确实能回退到 tkinter；`Kiwix.exe` 进入整包根目录与缺件门禁
+
 ## [1.1.2] - 2026-09-26
 
 界面显示的版本号此前是假的，一并修正。
