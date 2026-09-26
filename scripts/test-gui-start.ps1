@@ -119,9 +119,28 @@ Write-Host "  window : $($root.Current.Name)"
 
 Check ((Get-Text $root 'BadgeText') -match '未运行') "starts in the not-running state"
 # The header reports the kiwix-tools version by asking the bundled binary, so a
-# failed probe would silently leave it blank or fall back to a hardcoded lie.
+# failed probe must not pass unnoticed. Whether a number is *required* depends on
+# whether a binary is actually reachable, which means resolving the bundle root
+# the same way the app does: walk up from the executable looking for zim/ + app/.
+# "未知" is the correct display when there is nothing to ask -- a CI runner has
+# no kiwix-serve at all, and demanding a number there would assert a lie.
+$exeDir = (Resolve-Path (Split-Path -Parent $Exe)).Path
+$bundleRoot = $exeDir
+for ($i = 0; $i -lt 6; $i++) {
+    if ((Test-Path (Join-Path $bundleRoot 'zim')) -and (Test-Path (Join-Path $bundleRoot 'app'))) { break }
+    $parent = Split-Path -Parent $bundleRoot
+    if (-not $parent -or $parent -eq $bundleRoot) { $bundleRoot = $exeDir; break }
+    $bundleRoot = $parent
+}
+$serveName = if ($env:OS -eq 'Windows_NT') { 'kiwix-serve.exe' } else { 'kiwix-serve' }
+$hasServe = @(Get-ChildItem (Join-Path $bundleRoot 'app') -Recurse -Filter $serveName -File -ErrorAction SilentlyContinue).Count -gt 0
 $ver = Get-Text $root 'VersionText'
-Check ($ver -match 'kiwix-tools\s+\d') "header reports the real kiwix-tools version", $ver
+if ($hasServe) {
+    Check ($ver -match 'kiwix-tools\s+\d') "header reports the probed kiwix-tools version", $ver
+} else {
+    Write-Host "  -- no kiwix-serve under $bundleRoot, so 未知 is expected --"
+    Check ($ver -match 'kiwix-tools\s+未知') "header says 未知 when there is no binary to ask", $ver
+}
 Check ($ver -match 'v\d+\.\d+') "header reports the launcher version", $ver
 Check ((Invoke-Button $root 'StartButton') -eq 'invoked') "启动服务 can be pressed"
 
