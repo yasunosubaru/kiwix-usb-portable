@@ -32,7 +32,7 @@
                 <TextBlock x:Name="BadgeText" Text="未运行" Foreground="#8B93A7" FontSize="13" FontWeight="SemiBold" />
             </Border>
             <TextBlock Grid.Column="2" x:Name="VersionText" VerticalAlignment="Center"
-                       Foreground="#8B93A7" FontSize="12" Text="kiwix-tools 3.8.2" />
+                       Foreground="#8B93A7" FontSize="12" Text="kiwix-tools" />
         </Grid>
 
         <!-- ===== 服务地址 ===== -->

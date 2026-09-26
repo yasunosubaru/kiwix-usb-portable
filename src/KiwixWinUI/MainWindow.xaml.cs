@@ -25,6 +25,9 @@ public sealed partial class MainWindow : Window
     private bool _healthOk;
     private bool _starting;
 
+    /// <summary>Launcher version, shown next to the kiwix-tools version.</summary>
+    private const string AppVersion = "1.1.2";
+
     public MainWindow()
     {
         InitializeComponent();
@@ -53,6 +56,9 @@ public sealed partial class MainWindow : Window
 
         RefreshLibrary();
         RefreshPreflight();
+        // Ask the bundled binary instead of trusting a hardcoded string: the
+        // Windows build is 3.8.1 while the release is named 3.8.2.
+        VersionText.Text = $"kiwix-tools {_service.KiwixToolsVersion} · 本启动器 v{AppVersion}";
         Closed += OnClosed;
     }
 

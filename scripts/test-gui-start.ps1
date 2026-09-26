@@ -118,6 +118,11 @@ if (-not $root) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 Write-Host "  window : $($root.Current.Name)"
 
 Check ((Get-Text $root 'BadgeText') -match '未运行') "starts in the not-running state"
+# The header reports the kiwix-tools version by asking the bundled binary, so a
+# failed probe would silently leave it blank or fall back to a hardcoded lie.
+$ver = Get-Text $root 'VersionText'
+Check ($ver -match 'kiwix-tools\s+\d') "header reports the real kiwix-tools version", $ver
+Check ($ver -match 'v\d+\.\d+') "header reports the launcher version", $ver
 Check ((Invoke-Button $root 'StartButton') -eq 'invoked') "启动服务 can be pressed"
 
 Start-Sleep -Seconds 4

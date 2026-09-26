@@ -230,6 +230,45 @@ public sealed class KiwixService : IDisposable
         catch { try { _proc.Kill(entireProcessTree: true); } catch { } }
     }
 
+    /// <summary>
+    /// The version string the bundled kiwix-serve actually reports.
+    ///
+    /// It cannot be hardcoded: upstream does not publish every platform on every
+    /// release, so for 3.8.2 the Windows build is 3.8.1. The UI used to claim
+    /// 3.8.2 on Windows, which was simply wrong. Probed once and cached, and
+    /// failure is not fatal -- it is only a label.
+    /// </summary>
+    public string KiwixToolsVersion
+    {
+        get
+        {
+            if (_version is not null) return _version;
+            _version = "未知";
+            try
+            {
+                var exe = BundleLayout.ServeBinary;
+                if (File.Exists(exe))
+                {
+                    using var p = Process.Start(new ProcessStartInfo(exe, "--version")
+                    {
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true
+                    });
+                    var text = p?.StandardOutput.ReadToEnd() ?? "";
+                    p?.WaitForExit(8000);
+                    var m = Regex.Match(text, @"kiwix-tools\s+([0-9][^\s|]*)");
+                    if (m.Success) _version = m.Groups[1].Value;
+                }
+            }
+            catch { }
+            return _version;
+        }
+    }
+
+    private string? _version;
+
     private void Cleanup()
     {
         _proc?.Dispose();
