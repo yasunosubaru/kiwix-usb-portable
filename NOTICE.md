@@ -16,6 +16,12 @@
 | 许可 | **GPL-3.0-or-later** |
 | 本项目使用版本 | 见下表 |
 
+包含 `kiwix-serve` / `kiwix-manage` / `kiwix-search`（Linux x86_64、Windows x86_64、macOS），
+以及 `ghcr.io/kiwix/kiwix-serve` Docker 镜像（`app/docker/kiwix-serve-legacy.tar`）。
+
+kiwix-tools 是 GPL 软件，因此**包含其二进制文件的分发包整体以 GPL-3.0 发布**。
+官方 Docker 镜像内置于 Alpine 用户空间，提供 Tcl/Tk 与 X11 运行库。
+
 ### 平台版本不一致（上游现状）
 
 kiwix-tools **不保证每个平台在同一版本同时发布**。`scripts/fetch-kiwix-binaries.*`
@@ -32,25 +38,27 @@ kiwix-tools **不保证每个平台在同一版本同时发布**。`scripts/fetc
 GUI 启动器与 kiwix-serve 之间没有版本耦合（它们只是通过命令行和 HTTP 交互），
 因此这一补丁级差异不影响功能；`SHA256SUMS.txt` 记录了实际分发文件的哈希。
 
-包含：
-- `kiwix-tools_linux-x86_64-3.8.2.tar.gz` → 静态 ELF，部署于 `app/linux-x86_64/`
-- Windows 构建 → `app/windows-x86_64/`
-- `kiwix-serve` Docker 镜像（`ghcr.io/kiwix/kiwix-serve`）→ `app/docker/kiwix-serve-legacy.tar`
-
-kiwix-tools 是 GPL 软件，因此**包含其二进制文件的分发包整体以 GPL-3.0 发布**。
-官方 Docker 镜像内置于 Alpine 用户空间，提供 Tcl/Tk 与 X11 运行库。
-
 ---
 
-## 2. Python / PyInstaller / Tkinter
+## 2. GUI 运行时
 
-| 组件 | 许可 |
-|---|---|
-| Python 3.11+ | PSF License |
-| PyInstaller | GPL-2.0-or-later（附带 bootloader 例外条款）|
-| Tcl / Tk | BSD-style（Tcl）/ BSD-style（Tk）|
+仓库内提供**两套** Windows 图形启动器，功能与安全边界完全一致，可任选其一：
 
-GUI 启动器使用标准库 `tkinter` + `urllib`，**不引入额外第三方 Python 依赖**。
+| 启动器 | 技术栈 | 产物 | 许可 |
+|---|---|---|---|
+| `app/gui/KiwixWinUI/` | **WinUI 3**（Windows App SDK 1.7）| 自包含目录，约 166 MB | WinUI 3 **MIT**；Windows App SDK **MIT**；.NET Runtime **MIT** |
+| `app/gui/KiwixUSB.exe` | Python 3 + tkinter | 单文件，约 11 MB | Python **PSF**；PyInstaller **GPL-2.0-or-later**（附 bootloader 例外条款）；Tcl/Tk **BSD-style** |
+| `app/gui/KiwixUSB-linux-x86_64` | Python 3 + tkinter | 单文件，约 12 MB | 同上 |
+
+`launcher/start-gui.cmd` 优先启动 WinUI 3 版；若该目录不存在（例如精简整包），自动回退到 tkinter 单文件版。
+
+**为什么体积差这么多**
+
+- WinUI 3 走的是**自包含（self-contained）**发布。为了做到「U 盘插上即用、不需要另外安装
+  Windows App Runtime」，.NET 运行时与 Windows App Runtime 全部打进产物（约 480 个文件，166 MB）。
+- tkinter 版用 PyInstaller `--onefile` 打包，Python 解释器一并压进单个 exe，因此只有 11 MB。
+
+两者都**不需要安装、不需要预装 Python 或 .NET 运行时**。
 
 ---
 

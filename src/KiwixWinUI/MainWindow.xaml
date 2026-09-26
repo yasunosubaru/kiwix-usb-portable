@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="KiwixWinUI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:core="using:KiwixWinUI"
+    Title="Kiwix 离线维基 · 便携版">
+
+    <Grid x:Name="RootGrid" RequestedTheme="Dark" Background="#12151C" RowSpacing="0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ===== 标题 ===== -->
+        <Grid Grid.Row="0" Margin="22,20,22,6" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="Kiwix 离线维基" FontSize="28" FontWeight="SemiBold" Foreground="#F2F4F9" />
+                <TextBlock Text="便携版 · 免安装 · 离线可用" Style="{StaticResource Dim}" Margin="0,2,0,0" />
+            </StackPanel>
+            <Border Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left"
+                    x:Name="BadgeBorder" Background="#232838" CornerRadius="12" Padding="14,5,14,5">
+                <TextBlock x:Name="BadgeText" Text="未运行" Foreground="#8B93A7" FontSize="13" FontWeight="SemiBold" />
+            </Border>
+            <TextBlock Grid.Column="2" x:Name="VersionText" VerticalAlignment="Center"
+                       Foreground="#8B93A7" FontSize="12" Text="kiwix-tools 3.8.2" />
+        </Grid>
+
+        <!-- ===== 服务地址 ===== -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="22,8,22,8">
+            <StackPanel Spacing="10">
+                <TextBlock Text="服务地址" Style="{StaticResource CardTitle}" />
+                <TextBlock x:Name="UrlText" Text="—" FontSize="26" FontWeight="SemiBold"
+                           Foreground="#F2F4F9" TextWrapping="NoWrap" />
+
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock Text="端口" Style="{StaticResource Dim}" VerticalAlignment="Center" />
+                    <TextBox x:Name="PortBox" Text="8092" Width="72" Height="32"
+                             InputScope="Number" CornerRadius="6" />
+                    <Button x:Name="StartButton" Content="启动服务" Style="{StaticResource PrimaryButton}"
+                            Click="OnStartClick" />
+                    <Button x:Name="StopButton" Content="停止" Click="OnStopClick" IsEnabled="False" />
+                    <Button x:Name="OpenButton" Content="打开书架（全部）" Click="OnOpenClick" IsEnabled="False" />
+                    <Button x:Name="CopyUrlButton" Content="复制地址" Click="OnCopyUrlClick" />
+                </StackPanel>
+
+                <StackPanel x:Name="PreflightPanel" Orientation="Horizontal" Spacing="8" />
+            </StackPanel>
+        </Border>
+
+        <!-- ===== 通知条（错误中心） ===== -->
+        <InfoBar Grid.Row="2" x:Name="Notice" IsOpen="False" IsClosable="True"
+                 Severity="Informational" Margin="22,0,22,4" />
+
+        <!-- ===== 内容库 + 日志 ===== -->
+        <Grid Grid.Row="3" Margin="22,4,22,8" ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="4*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource CardBorder}">
+                <Grid RowSpacing="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="离线内容库（只读）" Style="{StaticResource CardTitle}" />
+                    <ListView Grid.Row="1" x:Name="LibraryList" SelectionMode="None"
+                              Background="Transparent" BorderThickness="0"
+                              IsItemClickEnabled="False">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="core:ZimEntry">
+                                <Grid Padding="4,8" ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{x:Bind Name}" Foreground="#E6E9F0"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="1" Text="{x:Bind SizeText}" Foreground="#8B93A7"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="2" Text="{x:Bind Integrity}" Foreground="#8B93A7"
+                                               VerticalAlignment="Center" FontSize="12" MinWidth="72"
+                                               TextAlignment="Right" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10">
+                        <TextBlock x:Name="LibrarySummary" Style="{StaticResource Dim}" VerticalAlignment="Center" />
+                        <Button x:Name="VerifyButton" Content="校验完整性" Click="OnVerifyClick" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="3" Spacing="6">
+                        <ProgressBar x:Name="VerifyProgress" Visibility="Collapsed" Height="4" />
+                        <TextBlock x:Name="VerifyNote" Style="{StaticResource Dim}" FontSize="11"
+                                   Text="启动时不做哈希扫描；仅在你点击后校验。" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource CardBorder}">
+                <Grid RowSpacing="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="运行日志（不含搜索词与浏览记录）" Style="{StaticResource CardTitle}" />
+                    <TextBox Grid.Row="1" x:Name="LogBox" Style="{StaticResource Mono}"
+                             TextWrapping="Wrap" AcceptsReturn="True" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ===== 飞牛部署 ===== -->
+        <Border Grid.Row="4" Style="{StaticResource CardBorder}" Margin="22,0,22,8" Padding="18,10,18,10">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="飞牛 fnOS 常驻部署" Style="{StaticResource CardTitle}" Margin="0,0,0,2" />
+                    <TextBlock Style="{StaticResource Dim}"
+                               Text="SSH 进 NAS 后执行：  sudo sh &lt;U盘路径&gt;/install-fnos.sh    （把 ZIM 复制到硬盘 → 装 Docker 容器 → 开机自启）" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="复制命令" Click="OnCopyFnOsClick" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <!-- ===== 状态栏 ===== -->
+        <Grid Grid.Row="5" Margin="22,0,22,14" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" x:Name="StatusText" Text="就绪" Style="{StaticResource Dim}"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            <TextBlock Grid.Column="1" x:Name="RuntimeText" Style="{StaticResource Dim}" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="2" Style="{StaticResource Dim}" FontSize="11" VerticalAlignment="Center"
+                       Text="不静默提权 · 不建自启 · 不改防火墙 · 不联网 · ZIM 只读" />
+        </Grid>
+    </Grid>
+</Window>

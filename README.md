@@ -19,6 +19,7 @@
 | **不依赖 Docker** | 直接跑 kiwix 官方静态二进制 |
 | **也可装 Docker** | 附离线镜像 tar，飞牛/群晖上一键常驻 |
 | **GUI + 命令行** | 图形启动器带预检与自检；无桌面环境用 shell 脚本 |
+| **两套 Windows GUI** | **WinUI 3**（现代界面，默认）与 Python/tkinter 单文件版（11 MB 轻量备用）|
 
 已内置 kiwix-tools **3.8.2** 官方静态二进制（Linux x86_64 / Windows x86_64）。
 
@@ -28,6 +29,10 @@
 
 ### Windows
 双击 `launcher\start-gui.cmd` → 点「▶ 启动服务」→ 自动打开浏览器。
+
+启动器会优先使用 **WinUI 3** 版（`app/gui/KiwixWinUI/`），
+若该目录不存在则自动回退到 tkinter 单文件版（`app/gui/KiwixUSB.exe`）。
+两版功能与安全边界完全一致。
 
 ### Linux 桌面
 ```bash
@@ -61,9 +66,10 @@ Kiwix-USB/
 │   └── wikipedia_*.zim
 └── app/
     ├── gui/                   GUI 启动器
-    │   ├── KiwixUSB.exe              Windows 单文件
-    │   ├── KiwixUSB-linux-x86_64     Linux 单文件（glibc 2.36 基线）
-    │   └── KiwixUSB.py               源码
+    │   ├── KiwixWinUI/               Windows WinUI 3（自包含，约 166 MB）
+    │   ├── KiwixUSB.exe              Windows tkinter 单文件（约 11 MB）
+    │   ├── KiwixUSB-linux-x86_64     Linux tkinter 单文件（glibc 2.36 基线）
+    │   └── KiwixUSB.py               tkinter 版源码
     ├── linux-x86_64/           kiwix-serve / manage / search（官方静态）
     ├── windows-x86_64/         同上（.exe）
     └── docker/                 Docker 离线镜像 tar
@@ -77,11 +83,16 @@ Kiwix-USB/
 git clone <this-repo>
 cd <this-repo>
 
-# 1) 下载 kiwix 官方静态二进制（不入库）
+# 1) Windows WinUI 3 启动器
+powershell -File scripts\build-winui.ps1
+
+# 2) Windows / Linux tkinter 单文件启动器
+
+# 3) 下载 kiwix 官方静态二进制（不入库）
 bash scripts/fetch-kiwix-binaries.sh          # Linux
 powershell -File scripts/fetch-kiwix-binaries.ps1   # Windows
 
-# 2) 打包 GUI
+# 4) 打包 tkinter GUI
 pip install -r requirements-build.txt
 python -m PyInstaller --onefile --windowed --name KiwixUSB src/KiwixUSB.py
 
@@ -89,7 +100,22 @@ python -m PyInstaller --onefile --windowed --name KiwixUSB src/KiwixUSB.py
 bash scripts/build-linux-docker.sh
 ```
 
-GitHub Actions 会在 `v*` 标签推送时自动构建两个平台并发布 Release 资产。
+### 启动器自检
+
+两套启动器都能在无界面下自证可用：
+
+```powershell
+# WinUI 3：定位资料库 → 启动 kiwix-serve → 核对服务器实际加载的书目数 → 干净停止
+app\gui\KiwixWinUI\KiwixWinUI.exe --selftest
+
+# tkinter 版：同一套断言
+app\gui\KiwixUSB.exe --selftest
+```
+
+`scripts\build-winui.ps1` 在构建后会自动做一次启动检查；GitHub Actions 的
+`build-winui` job 同样会启动一次并确认进程存活。
+
+GitHub Actions 会在 `v*` 标签推送时自动构建三个平台（WinUI 3 / tkinter / Linux）并发布 Release 资产。
 
 ---
 

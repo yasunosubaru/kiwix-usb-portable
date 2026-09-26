@@ -2,6 +2,45 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.0] — 2026-09-26
+
+Windows 图形启动器重写为 **WinUI 3**；原 Python/tkinter 版作为轻量备用保留。
+
+### 新增
+
+- **WinUI 3 启动器**（`src/KiwixWinUI/`）
+  - Windows App SDK 1.7，**免打包（unpackaged）+ 自包含**发布：无 MSIX、无需安装、无需预装
+    .NET 桌面运行时或 Windows App Runtime
+  - 现代 Fluent 视觉：`InfoBar` 错误中心、`ListView` 内容库、实时预检状态条、进度条
+  - 启动前五项预检、书目自检、端口顺延、SHA256 校验（显式触发），行为与 tkinter 版一致
+  - `KiwixWinUI.exe --selftest`：无界面自证（定位资料库 → 起服务 → 核对服务器实际加载书目数 → 干净停止），
+    CI 与脚本均可调用
+- **tkinter 版也获得 `--selftest`**（`KiwixUSB.exe --selftest`），断言集与 WinUI 3 版一致
+- `launcher/start-gui.cmd` 改为**优先启动 WinUI 3**，目录缺失时自动回退到 tkinter 单文件版
+- `scripts/build-winui.ps1`：发布 + 产物校验 + 启动检查一步到位
+- CI 新增 `build-winui` job（构建 → 校验文件数 → 启动 → 确认进程存活）
+
+### 修复
+
+- `KiwixUSB.py`：补回模块级 `free_port()`（重写时误删，导致 `start_service` 逻辑重复）
+- 自检输出改为行缓冲，重定向到文件时不再因缓冲丢失尾部日志
+
+### 已知限制
+
+- WinUI 3 自包含产物约 **166 MB**（约 480 个文件），相比 tkinter 单文件 11 MB 大得多；
+  这是「免安装」与「体积」之间的取舍。`start-gui.cmd` 会在两者间自动选择
+- WinUI 3 免打包应用在**无桌面会话**的环境无法运行（与 tkinter 版不同，后者可用 `--selftest` 在
+  纯命令行环境完成同等校验）
+
+### 构建备注
+
+WinUI 3 的 XAML 有两处易踩的坑，已在 `App.xaml` 注释中记录：WinUI 3 **不是 WPF**，
+`Button` 没有 `CornerRadius`、`TextBox` 没有 `IsScrollBarEnabled`；写入不存在的属性会让
+XAML 编译器**静默失败（退出码 1、无任何输出）**。XAML 文件必须走 SDK 默认的
+`Page` / `ApplicationDefinition` 隐式项，既不能显式声明（重复项报错），
+也不能设 `EnableDefaultPageItems=false`（会跳过 XAML 编译器，导致
+`InitializeComponent()` 不存在）。
+
 ## [1.0.0] — 2026-09-25
 
 首个公开版本。

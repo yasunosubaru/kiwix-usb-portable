@@ -52,7 +52,8 @@ if IS_WIN:
         except Exception:
             pass
 
-SUPPORTED = ("windows-x86_64", "linux-x86_64", "linux-aarch64", "linux-armv8", "linux-i586")
+SUPPORTED_PLATFORMS = ("windows-x86_64", "linux-x86_64", "linux-aarch64",
+                     "linux-armv8", "linux-i586")
 
 
 # ============================================================
@@ -117,6 +118,20 @@ def port_busy(port):
         return True
     finally:
         s.close()
+
+
+def free_port(preferred, limit=50):
+    """First free port at or after `preferred`.
+
+    Never terminates whatever owns a busy port; the caller is responsible for
+    telling the user that the port moved.
+    """
+    p = preferred
+    for _ in range(limit):
+        if not port_busy(p):
+            return p
+        p += 1
+    return p
 
 
 def http_alive(port, timeout=2.0):
@@ -391,7 +406,7 @@ class KiwixApp(tk.Tk):
     # ---------------- 预检 ----------------
     def preflight(self):
         checks = []
-        arch_ok = self.plat in SUPPORTED
+        arch_ok = self.plat in SUPPORTED_PLATFORMS
         checks.append(("arch", arch_ok, self.plat if arch_ok else "不支持的架构 " + self.plat))
 
         exe = self.binary_path()
@@ -490,11 +505,7 @@ class KiwixApp(tk.Tk):
             want = DEFAULT_PORT
         port = want
         if port_busy(port):
-            alt = port
-            for _ in range(50):
-                alt += 1
-                if not port_busy(alt):
-                    break
+            alt = free_port(port)
             self.write_log("! 端口 %d 已被其它程序占用。" % port)
             self.write_log("  本应用没有结束该程序，已自动改用端口 %d。" % alt)
             port = alt
@@ -741,5 +752,99 @@ class KiwixApp(tk.Tk):
         self.destroy()
 
 
+# ---------------------------------------------------------------- self test
+def run_selftest():
+    """Headless verification, so this launcher can be proven to work in CI
+    instead of by eyeballing a window. Exit code 0 = pass."""
+    import re
+    import subprocess
+    import time
+    import urllib.request
+
+    # When stdout is redirected to a file Python block-buffers, and a
+    # force-kill would then swallow the tail of the report.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+
+    failures = 0
+
+    def check(ok, what):
+        nonlocal failures
+        print(("  [PASS] " if ok else "  [FAIL] ") + what)
+        if not ok:
+            failures += 1
+
+    root = bundle_root()
+    plat = detect_platform_key()
+    print("=== KiwixUSB self-test ===")
+    print("  bundle root : %s" % root)
+    print("  platform    : %s (supported=%s)" % (plat, plat in SUPPORTED_PLATFORMS))
+    print("  zim dir     : %s" % os.path.join(root, "zim"))
+    print("  local ip    : %s" % local_ip())
+    print()
+
+    check(plat in SUPPORTED_PLATFORMS, "platform supported")
+
+    exe = binary_path_for(os.path.join(root, "app"), plat)
+    check(os.path.isfile(exe), "kiwix-serve binary present")
+
+    try:
+        zims = sorted(f for f in os.listdir(os.path.join(root, "zim"))
+                      if f.lower().endswith(".zim"))
+    except OSError:
+        zims = []
+    check(bool(zims), "offline library not empty (%d zim files)" % len(zims))
+    for n in zims:
+        print("          %s  %s" % (n, human_size(os.path.getsize(os.path.join(root, "zim", n)))))
+
+    if not zims:
+        print("\nRESULT: FAIL (no library, cannot exercise the service)")
+        return 1
+
+    if not IS_WIN:
+        try:
+            os.chmod(exe, 0o755)
+        except OSError:
+            pass
+
+    port = free_port(18999)
+    args = [exe, "--port=%d" % port] + [os.path.join(root, "zim", n) for n in zims]
+    print("\n=== start service on port %d ===" % port)
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            universal_newlines=True, encoding="utf-8", errors="replace")
+    check(proc.poll() is None, "service process started")
+
+    loaded = -1
+    for _ in range(30):
+        time.sleep(1)
+        if proc.poll() is not None:
+            break
+        try:
+            with urllib.request.urlopen(
+                    "http://127.0.0.1:%d/catalog/v2/entries" % port, timeout=8) as r:
+                body = r.read().decode("utf-8", "replace")
+            loaded = len(re.findall(r"<entry>", body))
+            if loaded:
+                break
+        except Exception:
+            pass
+    check(loaded == len(zims), "server loaded %d/%d zim files" % (loaded, len(zims)))
+
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except Exception:
+        proc.kill()
+    check(proc.poll() is not None, "service stopped cleanly")
+
+    print()
+    print("RESULT: PASS" if failures == 0 else "RESULT: FAIL (%d)" % failures)
+    return 0 if failures == 0 else 1
+
+
 if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        sys.exit(run_selftest())
     KiwixApp().mainloop()

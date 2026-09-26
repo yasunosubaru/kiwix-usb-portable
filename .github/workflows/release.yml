@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build-windows:
-    name: Windows GUI
+    name: Windows GUI (tkinter, single file)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +39,46 @@ jobs:
           path: dist/KiwixUSB.exe
           if-no-files-found: error
 
+  build-winui:
+    name: Windows GUI (WinUI 3, unpackaged)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Publish self-contained WinUI 3 app
+        shell: pwsh
+        run: |
+          dotnet publish src/KiwixWinUI/KiwixWinUI.csproj -c Release -r win-x64 `
+            --self-contained true -o "${{ runner.temp }}/winui"
+      - name: Verify output and launch it
+        shell: pwsh
+        run: |
+          $out = "${{ runner.temp }}\winui"
+          foreach ($f in 'KiwixWinUI.exe','KiwixWinUI.dll','KiwixWinUI.runtimeconfig.json') {
+            if (-not (Test-Path "$out\$f")) { throw "missing $f" }
+          }
+          $files = Get-ChildItem $out -Recurse -File
+          $mb = [math]::Round(($files | Measure-Object Length -Sum).Sum / 1MB, 1)
+          Write-Host "$($files.Count) files, $mb MB"
+          # A self-contained WinUI 3 app is ~480 files; far fewer means the
+          # Windows App Runtime did not get bundled and it would not run.
+          if ($files.Count -lt 300) { throw "suspiciously small WinUI output" }
+          $p = Start-Process "$out\KiwixWinUI.exe" -PassThru
+          Start-Sleep -Seconds 20
+          if (-not (Get-Process KiwixWinUI -ErrorAction SilentlyContinue)) {
+            throw "app exited immediately"
+          }
+          Write-Host "launch check OK (PID $($p.Id))"
+          Stop-Process -Name KiwixWinUI -Force -ErrorAction SilentlyContinue
+          Get-Process kiwix-serve -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-winui
+          path: ${{ runner.temp }}/winui
+          if-no-files-found: error
+
   build-linux:
     name: Linux GUI (glibc 2.36 baseline)
     runs-on: ubuntu-latest
@@ -58,7 +98,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [build-windows, build-linux]
+    needs: [build-windows, build-winui, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -101,16 +141,25 @@ jobs:
           cp zim/SHA256SUMS.example.txt         bundle-stage/
           cp -r docs                             bundle-stage/docs
           cp README.md                           bundle-stage/
+          # WinUI 3 build is ~166 MB (self-contained .NET + Windows App SDK).
+          # It goes into its own subfolder; start-gui.cmd prefers it and
+          # falls back to the tkinter single file.
+          if [ -d artifacts/gui-winui ]; then
+            mkdir -p bundle-stage/app/gui/KiwixWinUI
+            cp -r artifacts/gui-winui/. bundle-stage/app/gui/KiwixWinUI/
+            echo "  WinUI 3: $(find bundle-stage/app/gui/KiwixWinUI -type f | wc -l) files"
+          fi
           for d in linux-x86_64 windows-x86_64 docker; do
             if [ -d "app/$d" ]; then cp -r "app/$d" bundle-stage/app/; fi
           done
           chmod +x bundle-stage/start.sh bundle-stage/stop.sh bundle-stage/install-fnos.sh
-          echo "--- bundle contents ---"
-          find bundle-stage -type f | sort
+          echo "--- bundle contents (top level) ---"
+          find bundle-stage -maxdepth 3 -type d | sort
       - name: Assert the bundle is actually complete
         run: |
           missing=0
           for f in app/gui/KiwixUSB.exe app/gui/KiwixUSB-linux-x86_64 \
+                   app/gui/KiwixWinUI/KiwixWinUI.exe \
                    app/linux-x86_64/kiwix-serve app/windows-x86_64/kiwix-serve.exe \
                    app/docker/kiwix-serve-legacy.tar start.sh start-gui.cmd; do
             if [ -f "bundle-stage/$f" ]; then
