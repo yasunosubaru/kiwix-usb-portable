@@ -36,9 +36,13 @@ jobs:
       # The bundle is opened by double-clicking an .exe, so the entry point is a
       # real native binary rather than a .cmd script. MSVC is already present on
       # the runner, so this needs no extra setup.
+      # Output goes to dist/ next to KiwixUSB.exe on purpose: upload-artifact
+      # roots an artifact at the least common ancestor of its paths, so sending
+      # dist/KiwixUSB.exe and dist/launcher/Kiwix.exe would silently produce
+      # launcher/Kiwix.exe inside the artifact instead of a flat Kiwix.exe.
       - name: Build the native launcher
         shell: pwsh
-        run: ./scripts/build-launcher.ps1 -Output dist/launcher
+        run: ./scripts/build-launcher.ps1 -Output dist
       - name: The launcher must start the tkinter build it falls back to
         shell: pwsh
         run: |
@@ -63,7 +67,7 @@ jobs:
           name: gui-windows
           path: |
             dist/KiwixUSB.exe
-            dist/launcher/Kiwix.exe
+            dist/Kiwix.exe
           if-no-files-found: error
 
   build-winui:
@@ -197,7 +201,11 @@ jobs:
           test -f artifacts/gui-windows/KiwixUSB.exe            || { echo "::error::no KiwixUSB.exe"; missing=1; }
           test -f artifacts/gui-linux/KiwixUSB-linux-x86_64     || { echo "::error::no KiwixUSB-linux-x86_64"; missing=1; }
           test -f artifacts/gui-winui/KiwixWinUI.exe            || { echo "::error::no KiwixWinUI.exe"; missing=1; }
-          test -f artifacts/gui-windows/Kiwix.exe               || { echo "::error::no Kiwix.exe launcher"; missing=1; }
+          if [ ! -f artifacts/gui-windows/Kiwix.exe ]; then
+            echo "::error::no Kiwix.exe launcher; artifacts/gui-windows contains:"
+            find artifacts/gui-windows -type f | sed 's/^/  /'
+            missing=1
+          fi
           exit $missing
       # Third-party binaries are intentionally absent from git, so the
       # release job has to fetch them or the bundle ships incomplete.
