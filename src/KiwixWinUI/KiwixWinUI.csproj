@@ -23,6 +23,19 @@
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <PublishSingleFile>false</PublishSingleFile>
     <IsPackable>false</IsPackable>
+
+    <!--
+      Single source of truth for the launcher version. It used to be a const in
+      MainWindow.xaml.cs plus a separate string in KiwixUSB.py, and the two
+      drifted apart across releases: the window claimed v1.1.2 inside a v1.2.0
+      bundle. The header now reads this at runtime, and test-gui-start.ps1
+      compares what is displayed against this value, so bumping the version here
+      and forgetting the rest fails the build instead of shipping a lie.
+    -->
+    <Version>1.2.1</Version>
+    <AssemblyVersion>1.2.1.0</AssemblyVersion>
+    <FileVersion>1.2.1.0</FileVersion>
+    <InformationalVersion>1.2.1</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

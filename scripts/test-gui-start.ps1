@@ -141,7 +141,17 @@ if ($hasServe) {
     Write-Host "  -- no kiwix-serve under $bundleRoot, so 未知 is expected --"
     Check ($ver -match 'kiwix-tools\s+未知') "header says 未知 when there is no binary to ask", $ver
 }
-Check ($ver -match 'v\d+\.\d+') "header reports the launcher version", $ver
+# Compare against the csproj rather than just checking that a number is there:
+# the window once displayed v1.1.2 inside a v1.2.0 bundle, and a regex would
+# have called that a pass.
+$csproj = Join-Path (Split-Path -Parent $Exe) '..\..\..\..\src\KiwixWinUI\KiwixWinUI.csproj'
+if (-not (Test-Path $csproj)) { $csproj = Join-Path $PSScriptRoot '..\src\KiwixWinUI\KiwixWinUI.csproj' }
+$expect = 'unknown'
+if (Test-Path $csproj) {
+    $m = [regex]::Match((Get-Content $csproj -Raw), '<Version>([^<]+)</Version>')
+    if ($m.Success) { $expect = $m.Groups[1].Value.Trim() }
+}
+Check ($ver -match ('v' + [regex]::Escape($expect) + '\b')) "header version matches the csproj", "want v$expect, header: $ver"
 Check ((Invoke-Button $root 'StartButton') -eq 'invoked') "启动服务 can be pressed"
 
 Start-Sleep -Seconds 4

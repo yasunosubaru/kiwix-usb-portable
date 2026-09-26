@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Reflection;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -25,8 +26,25 @@ public sealed partial class MainWindow : Window
     private bool _healthOk;
     private bool _starting;
 
-    /// <summary>Launcher version, shown next to the kiwix-tools version.</summary>
-    private const string AppVersion = "1.1.2";
+    /// <summary>
+    /// Launcher version, read from the assembly rather than hardcoded here.
+    /// A second copy of this string in the code-behind is how the window ended
+    /// up claiming v1.1.2 inside a v1.2.0 bundle.
+    /// </summary>
+    private static string AppVersion
+    {
+        get
+        {
+            var asm = typeof(MainWindow).Assembly;
+            var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
+            var v = info?.InformationalVersion;
+            if (string.IsNullOrWhiteSpace(v)) v = asm.GetName().Version?.ToString();
+            if (string.IsNullOrWhiteSpace(v)) return "unknown";
+            // Strip any build metadata: 1.2.1+abcdef -> 1.2.1
+            var plus = v.IndexOfAny(new[] { '+', '-' });
+            return plus > 0 ? v[..plus] : v;
+        }
+    }
 
     public MainWindow()
     {
