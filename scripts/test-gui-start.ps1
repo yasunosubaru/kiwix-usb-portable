@@ -28,11 +28,51 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 
-if (-not $Bundle) {
-    $Bundle = Split-Path -Parent $PSScriptRoot
-    $Bundle = Join-Path (Split-Path -Parent $Bundle) 'Kiwix-USB'
+# Locate the bundle the way the application does: walk up from the executable
+# until a directory holds both zim\ and app\. Guessing it relative to this
+# script instead only worked while the checkout and the bundle sat in the same
+# parent directory, and it failed silently -- the test went on to Start-Process
+# with a working directory that does not exist and died on a DirectoryNotFound
+# that says nothing about the GUI. The checkout now lives on a different volume
+# from the bundle, which is exactly the case the guess could not survive.
+function Find-Bundle([string]$StartDir) {
+    $dir = $StartDir
+    while ($dir) {
+        if ((Test-Path (Join-Path $dir 'zim')) -and (Test-Path (Join-Path $dir 'app'))) { return $dir }
+        $parent = Split-Path -Parent $dir
+        if (-not $parent -or $parent -eq $dir) { break }
+        $dir = $parent
+    }
+    return $null
 }
-if (-not $Exe) { $Exe = Join-Path $Bundle 'app\gui\KiwixWinUI\KiwixWinUI.exe' }
+
+if ($Bundle -and -not $Exe) {
+    # A caller who named the bundle has told us everything; the executable is a
+    # fixed path inside it. Checked in this order so -Bundle on its own is enough.
+    if (-not (Test-Path -LiteralPath $Bundle)) { throw "no such bundle directory: $Bundle" }
+    $Exe = Join-Path $Bundle 'app\gui\KiwixWinUI\KiwixWinUI.exe'
+    if (-not (Test-Path -LiteralPath $Exe)) { throw "no KiwixWinUI.exe inside the bundle: $Exe" }
+} elseif (-not $Exe) {
+    # Neither given. The bundle is not part of the repository -- it holds the
+    # 148 GB of ZIM files and deliberately lives elsewhere -- so the only honest
+    # thing to do is try the one place a bundle has ever sat next to a checkout,
+    # and otherwise say so.
+    $guess = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'Kiwix-USB'
+    if (Test-Path -LiteralPath (Join-Path $guess 'app\gui\KiwixWinUI\KiwixWinUI.exe')) {
+        $Exe = Join-Path $guess 'app\gui\KiwixWinUI\KiwixWinUI.exe'
+    } else {
+        throw ("no -Exe or -Bundle given, and no bundle beside this checkout at $guess. " +
+               "The bundle is not part of the repository; pass -Exe <path> or -Bundle <dir>.")
+    }
+}
+
+if (-not $Bundle) {
+    $found = Find-Bundle (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $Exe)))
+    if (-not $found) { throw "could not find a bundle (a directory with zim\ and app\) above $Exe; pass -Bundle" }
+    $Bundle = $found
+} elseif (-not (Test-Path -LiteralPath $Bundle)) {
+    throw "no such bundle directory: $Bundle"
+}
 
 $script:failures = 0
 function Check($ok, [string]$what, [string]$detail = '') {
@@ -120,25 +160,21 @@ Write-Host "  window : $($root.Current.Name)"
 Check ((Get-Text $root 'BadgeText') -match '未运行') "starts in the not-running state"
 # The header reports the kiwix-tools version by asking the bundled binary, so a
 # failed probe must not pass unnoticed. Whether a number is *required* depends on
-# whether a binary is actually reachable, which means resolving the bundle root
-# the same way the app does: walk up from the executable looking for zim/ + app/.
-# "未知" is the correct display when there is nothing to ask -- a CI runner has
-# no kiwix-serve at all, and demanding a number there would assert a lie.
-$exeDir = (Resolve-Path (Split-Path -Parent $Exe)).Path
-$bundleRoot = $exeDir
-for ($i = 0; $i -lt 6; $i++) {
-    if ((Test-Path (Join-Path $bundleRoot 'zim')) -and (Test-Path (Join-Path $bundleRoot 'app'))) { break }
-    $parent = Split-Path -Parent $bundleRoot
-    if (-not $parent -or $parent -eq $bundleRoot) { $bundleRoot = $exeDir; break }
-    $bundleRoot = $parent
-}
+# whether a binary is actually reachable. "未知" is the correct display when there
+# is nothing to ask -- a CI runner has no kiwix-serve at all, and demanding a
+# number there would assert a lie.
+#
+# $Bundle was resolved once at the top by walking up from the executable, the same
+# rule the application uses. Re-deriving it here is what let the two disagree:
+# this copy silently fell back to the executable's own directory and reported a
+# bundle the test was not actually running against.
 $serveName = if ($env:OS -eq 'Windows_NT') { 'kiwix-serve.exe' } else { 'kiwix-serve' }
-$hasServe = @(Get-ChildItem (Join-Path $bundleRoot 'app') -Recurse -Filter $serveName -File -ErrorAction SilentlyContinue).Count -gt 0
+$hasServe = @(Get-ChildItem (Join-Path $Bundle 'app') -Recurse -Filter $serveName -File -ErrorAction SilentlyContinue).Count -gt 0
 $ver = Get-Text $root 'VersionText'
 if ($hasServe) {
     Check ($ver -match 'kiwix-tools\s+\d') "header reports the probed kiwix-tools version", $ver
 } else {
-    Write-Host "  -- no kiwix-serve under $bundleRoot, so 未知 is expected --"
+    Write-Host "  -- no kiwix-serve under $Bundle, so 未知 is expected --"
     Check ($ver -match 'kiwix-tools\s+未知') "header says 未知 when there is no binary to ask", $ver
 }
 # Compare against the declared version rather than just checking that a number is
