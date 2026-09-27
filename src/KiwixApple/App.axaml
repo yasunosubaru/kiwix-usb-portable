@@ -1,0 +1,108 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="KiwixApple.App"
+             RequestedThemeVariant="Default">
+
+  <!--
+    RequestedThemeVariant="Default" means "follow the system". The WinUI
+    front-end is hard-coded dark; a launcher people leave open on a desktop
+    has to be usable in both, so every colour below is declared twice.
+
+    Dark is not a hand-waved inversion: Apple re-derives the accent colours for
+    a dark canvas (systemBlue #0A84FF, not #007AFF) because the light values go
+    muddy on black, and the greys carry alpha in both appearances for the same
+    reason. The canonical values are listed below so a future edit cannot
+    quietly invent its own.
+  -->
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <!--
+          Metrics and the two bespoke control themes live in Application.Resources
+          rather than in Application.Styles so that {StaticResource AppleButton}
+          and friends resolve from the window markup. A ControlTheme declared in a
+          Styles collection is not part of the resource lookup chain, and the
+          whole theming approach above depends on the window being able to name it.
+        -->
+        <ResourceInclude Source="avares://KiwixApple/Theme/AppleMetrics.axaml" />
+        <ResourceInclude Source="avares://KiwixApple/Theme/AppleControls.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+
+      <ResourceDictionary.ThemeDictionaries>
+
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="SystemBlue" Color="#007AFF" />
+          <SolidColorBrush x:Key="SystemBlueTint" Color="#1F007AFF" />
+          <SolidColorBrush x:Key="SystemGreen" Color="#34C759" />
+          <SolidColorBrush x:Key="SystemGreenTint" Color="#1F34C759" />
+          <SolidColorBrush x:Key="SystemRed" Color="#FF3B30" />
+          <SolidColorBrush x:Key="SystemRedTint" Color="#1FFF3B30" />
+          <SolidColorBrush x:Key="SystemOrange" Color="#FF9500" />
+          <SolidColorBrush x:Key="SystemOrangeTint" Color="#1FFF9500" />
+
+          <SolidColorBrush x:Key="Label" Color="#000000" />
+          <SolidColorBrush x:Key="SecondaryLabel" Color="#993C3C43" />
+          <SolidColorBrush x:Key="TertiaryLabel" Color="#4D3C3C43" />
+          <SolidColorBrush x:Key="QuaternaryLabel" Color="#253C3C43" />
+
+          <SolidColorBrush x:Key="SystemGroupedBackground" Color="#F2F2F7" />
+          <SolidColorBrush x:Key="SecondarySystemGroupedBackground" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="TertiarySystemGroupedBackground" Color="#F2F2F7" />
+
+          <SolidColorBrush x:Key="SystemFill" Color="#33787880" />
+          <SolidColorBrush x:Key="SecondarySystemFill" Color="#29787880" />
+          <SolidColorBrush x:Key="TertiarySystemFill" Color="#1F787880" />
+
+          <SolidColorBrush x:Key="Separator" Color="#4A3C3C43" />
+          <SolidColorBrush x:Key="OpaqueSeparator" Color="#C6C6C8" />
+
+          <SolidColorBrush x:Key="Scrim" Color="#59000000" />
+          <SolidColorBrush x:Key="AlertBackground" Color="#FFFFFF" />
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="SystemBlue" Color="#0A84FF" />
+          <SolidColorBrush x:Key="SystemBlueTint" Color="#300A84FF" />
+          <SolidColorBrush x:Key="SystemGreen" Color="#30D158" />
+          <SolidColorBrush x:Key="SystemGreenTint" Color="#3030D158" />
+          <SolidColorBrush x:Key="SystemRed" Color="#FF453A" />
+          <SolidColorBrush x:Key="SystemRedTint" Color="#30FF453A" />
+          <SolidColorBrush x:Key="SystemOrange" Color="#FF9F0A" />
+          <SolidColorBrush x:Key="SystemOrangeTint" Color="#30FF9F0A" />
+
+          <SolidColorBrush x:Key="Label" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="SecondaryLabel" Color="#99EBEBF5" />
+          <SolidColorBrush x:Key="TertiaryLabel" Color="#4DEBEBF5" />
+          <SolidColorBrush x:Key="QuaternaryLabel" Color="#25EBEBF5" />
+
+          <SolidColorBrush x:Key="SystemGroupedBackground" Color="#000000" />
+          <SolidColorBrush x:Key="SecondarySystemGroupedBackground" Color="#1C1C1E" />
+          <SolidColorBrush x:Key="TertiarySystemGroupedBackground" Color="#2C2C2E" />
+
+          <SolidColorBrush x:Key="SystemFill" Color="#5C787880" />
+          <SolidColorBrush x:Key="SecondarySystemFill" Color="#52787880" />
+          <SolidColorBrush x:Key="TertiarySystemFill" Color="#3D787880" />
+
+          <SolidColorBrush x:Key="Separator" Color="#A6545458" />
+          <SolidColorBrush x:Key="OpaqueSeparator" Color="#38383A" />
+
+          <SolidColorBrush x:Key="Scrim" Color="#73000000" />
+          <SolidColorBrush x:Key="AlertBackground" Color="#2C2C2E" />
+        </ResourceDictionary>
+
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <!--
+      Fluent is loaded first purely for the parts Apple does not define: the
+      ScrollBar overlay, the caret and text selection of TextBox, the
+      ProgressBar track. Every control the user actually touches gets its theme
+      replaced below, so no grey WPF/WinUI chrome can show through.
+    -->
+    <FluentTheme />
+    <StyleInclude Source="avares://KiwixApple/Theme/AppleTheme.axaml" />
+  </Application.Styles>
+
+</Application>

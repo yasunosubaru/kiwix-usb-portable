@@ -4,10 +4,36 @@
 
 ## [1.2.2] - 2026-09-27
 
-应用图标重做，并接入构建门禁。
+应用图标重做并接入构建门禁；新增第三套 Windows 图形界面（Apple 视觉风格）；
+修掉一个让 WinUI 3 启动器**自身崩溃**的竞态。
 
 ### 新增
 
+- **第三套 GUI：`src/KiwixApple/`，按 Apple 人机界面指南（HIG）做的 Avalonia 版**
+  - 需求原文是「用 Apple 的 UIKit 写一个」。**UIKit 本身无法在 Windows 上运行**：
+    它只随 iOS / tvOS / macOS SDK 发布，没有任何 Windows 工具链能编译它并产出
+    exe，Swift 的 Windows 移植版只提供了 Foundation，没有 UIKit。这是工具链的
+    硬事实，不是配置问题，调参数解决不了
+  - 因此交付的是 **Avalonia 11.3.22**（`net8.0-windows` / `win-x64` / 自包含 /
+    `WinExe`）实现的**同一套设计语言**：大标题随滚动收起为内联标题、10pt 圆角的
+    inset 分组列表、Apple 语义色（深色外观是**另算**的一套，不是把亮色取反）、
+    SF 字阶、44pt 最小点击区，以及 `UIAlertController` 风格浮层而不是
+    `MessageBox`。代码里没有一行 UIKit，本项目也不自称是 UIKit 移植版
+  - 明亮 / 深色跟随系统（`RequestedThemeVariant="Default"`）；WinUI 3 版是
+    硬编码深色，这是两版之间有意保留的差异
+  - 与 WinUI 3 版功能对等：五项预检、启停、同一个
+    `http://127.0.0.1:<端口>/#lang=` 打开动作、同一个书目数自检、PID 与运行时长、
+    按需触发的 SHA256 校验
+  - 同一套安全边界：不提权、不建自启项、不动防火墙、不发出回环以外的请求、
+    ZIM 严格只读
+  - `--selftest` 无界面自证；每个可交互控件都带 `AutomationId`，因此能被
+    UI Automation 真正按下按钮来测。「窗口能打开」和 `--selftest` 在启动按钮
+    完全失效时**都会通过**，所以必须有点按钮的东西
+  - 产物：**215 个文件、约 94 MB**。**刻意不做单文件发布**：自包含单文件 exe
+    首次运行必须把 Skia / HarfBuzz 的原生二进制解压到 `%TEMP%`，在只读 U 盘上
+    会直接失败；整包本来就以目录形式分发
+  - 主题、控件模板与每条 HIG 对应关系的细节见
+    [`src/KiwixApple/README.md`](src/KiwixApple/README.md)
 - **`src/branding/`：重做的应用图标**
   - `kiwix.ico` 含 **10 个分辨率**（16/20/24/32/40/48/64/96/128/256），
     全部 32 位 RGBA 带真实 alpha 通道
@@ -27,6 +53,12 @@
 
 - WinUI 3 程序接入图标：csproj 的 `<ApplicationIcon>`，由 MSBuild 自己生成
   Win32 资源（不经过资源编译器）
+- Avalonia 版同样带上这份图标（csproj 的 `<ApplicationIcon>` 指向同一个
+  `src\branding\kiwix.ico`）
+- `Kiwix.exe` 的回退链从两段变成三段：**WinUI 3 → Avalonia → tkinter**，
+  顺序是刻意的。WinUI 3 是主界面；Avalonia 排第二，因为它**同样自包含**，
+  缺 Windows App Runtime 的机器仍能跑起来，而且它是按 HIG 做的那个；
+  tkinter 垫底，因为它最小、也最保守。三个都找不到时，弹窗把三条路径全列出来
 - Tkinter 程序改用仓库内的新图标（PyInstaller `--icon`）
 - `Kiwix.exe`（原生启动壳）**不带图标**，原因记录在
   `scripts/build-launcher.ps1` 里：本机可用的每条嵌入路径都试过且都失败——
@@ -36,6 +68,43 @@
   .res 能被 link.exe 接受，但产出的资源树 shell 无法枚举——**即使字节是从
   MSBuild 生成的 exe 里原样提取的**。两个真正会被长时间看到的 GUI 都有图标，
   而这个壳只存在半秒
+
+- **版本号收敛到单一来源 `src/Directory.Build.props`**
+  - 整包里现在有三个可执行文件，各自带一份版本号就是它们互相漂移的起点。
+    Avalonia 版原本声明 `1.0.0`，而它旁边的 WinUI 版声明 `1.2.1`
+  - 两个 `.csproj` 都不再自带 `<Version>`，改由 `src/Directory.Build.props`
+    提供；`scripts/build-launcher.ps1` 没有工程文件，改为解析同一个文件，
+    读不到就直接报错而不是回退到某个猜测值
+  - `scripts/test-gui-start.ps1` 与 `src/KiwixApple/test-gui-start.ps1`
+    的版本比对也改读该文件。Avalonia 的测试原先把 `v1.0.0` 写死，
+    统一版本后立刻失败——这正是这道门禁该有的表现
+  - 升版本号只需要改这一个文件
+
+### 修复
+
+- **WinUI 3 启动器自己崩溃：kiwix-serve 还没来得及提供服务就退出时，整个窗口
+  连带一句提示都没有地消失**（严重）
+  - 根因在 `src/KiwixWinUI/Core/KiwixService.cs`。`Process.Exited` 是在**线程池
+    线程**上抛出的，而它的处理函数把 `Process` **Dispose** 了；与此同时，启动后的
+    轮询探测（以及在 UI 线程上读 `IsRunning` 的周期性存活检查）正在向**同一个**
+    对象问 `HasExited`
+  - 对已 Dispose 的 `Process` 读 `HasExited` 会抛 `InvalidOperationException`。
+    于是**最需要给用户解释的那一种失败**——kiwix-serve 起来就退了——被放大成
+    启动器自身的未处理异常，窗口直接没了
+  - 这个缺陷**随 v1.2.1 一起发布过**
+  - 修复：处理函数现在只**退役**进程（`_retired`），**绝不** Dispose；句柄由确定
+    「已经没人会再问」的一方（`Cleanup` / `ReleaseRetired` / `Dispose`）稍后释放。
+    所有 `HasExited` 读取都改走一个不会抛异常的包装——已 Dispose 的进程当然已经
+    退出，这就该是它给出的答案。另加一个**每次启动的 generation id**：正在汇报
+    自己子进程死因的那次启动尝试会让处理函数闭嘴，于是同一次死亡只报一次，而不是
+    一次好的加一次更差的。`Stop()` 也不再把 `_proc` 字段读两遍（两次读取之间
+    处理函数可能已经把句柄释放了）
+  - 验证：用桩 `kiwix-serve` 复现——同时写 stdout 与 stderr，然后返回 3。
+    修复前 **8 次全挂**，返回码 `3762504530`（`0xE0434352`，.NET 未处理异常），
+    调用栈指向 `StartAsync` 里的 `Process.get_HasExited()`；修复后 **8 次全过**，
+    每次都正确报出退出码 3 与子进程捕获到的输出
+  - 同样的形状也存在于 `src/KiwixApple/Core/KiwixService.cs`（按其自身 README
+    的记录，那一处从一开始就是带这层保护写的）
 
 ## [1.2.1] - 2026-09-27
 

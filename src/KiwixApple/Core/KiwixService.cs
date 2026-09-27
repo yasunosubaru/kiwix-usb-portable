@@ -1,14 +1,17 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace KiwixWinUI;
+namespace KiwixApple.Core;
 
 public enum PreflightState { Ok, Warn, Fail, Unknown }
 
@@ -22,10 +25,35 @@ public sealed record ZimEntry(string Name, long Size, string Integrity, Prefligh
     public string SizeText => BundleLayout.HumanSize(Size);
 }
 
+public enum StartResultKind
+{
+    Ok, AlreadyRunning, StartInFlight, MissingBinary, UnsupportedPlatform, NoLibrary, LowMemory,
+    LaunchFailed, DiedDuringStartup
+}
+
+public readonly record struct StartResult(StartResultKind Kind, int Port = 0, double MemoryGb = 0,
+                                          string Message = "", int ExitCode = 0)
+{
+    public static StartResult Ok(int port) => new(StartResultKind.Ok, port);
+    public static StartResult AlreadyRunning => new(StartResultKind.AlreadyRunning);
+    public static StartResult StartInFlight => new(StartResultKind.StartInFlight);
+    public static StartResult MissingBinary => new(StartResultKind.MissingBinary);
+    public static StartResult UnsupportedPlatform => new(StartResultKind.UnsupportedPlatform);
+    public static StartResult NoLibrary => new(StartResultKind.NoLibrary);
+    public static StartResult LowMemory(double gb) => new(StartResultKind.LowMemory, MemoryGb: gb);
+    public static StartResult LaunchFailed(string m) => new(StartResultKind.LaunchFailed, Message: m);
+
+    /// <summary>The process came up and then quit before it ever served a request.</summary>
+    public static StartResult Died(int exitCode, string output) =>
+        new(StartResultKind.DiedDuringStartup, Message: output, ExitCode: exitCode);
+}
+
 /// <summary>
 /// Owns the kiwix-serve child process. Everything here is deliberately
-/// conservative: never kill a foreign process, never elevate, never write
-/// to the ZIM files, never reach the network beyond localhost.
+/// conservative, and that is the product's contract rather than caution for its
+/// own sake: never elevate, never kill a foreign process, never create a
+/// scheduled task or firewall rule, never write into zim\, and never send a
+/// packet anywhere except the loopback port of the child we started ourselves.
 /// </summary>
 public sealed class KiwixService : IDisposable
 {
@@ -36,10 +64,10 @@ public sealed class KiwixService : IDisposable
     ///
     /// The Exited event is delivered on a threadpool thread, and disposing the
     /// Process there destroys the one piece of evidence the user needs: the exit
-    /// code. StartAsync is very often inside its wait loop at that exact moment,
-    /// about to read HasExited off the same object. So the handler retires the
-    /// process and nothing else, and the handle is released later, by whoever is
-    /// certain no one is going to ask again.
+    /// code. StartCoreAsync is very often inside its wait loop at that exact
+    /// moment, about to read ExitCode off the same object. So the handler
+    /// retires the process and nothing else, and the handle is released later,
+    /// by whoever is certain no one is going to ask again.
     /// </summary>
     private volatile Process? _retired;
 
@@ -49,18 +77,30 @@ public sealed class KiwixService : IDisposable
     /// <summary>The start attempt that is reporting its own child's death, or -1.</summary>
     private int _selfReported = -1;
 
+    private int _startInFlight;
     private readonly Dictionary<string, PreflightItem> _preflight = new();
     private readonly Dictionary<string, (string Text, PreflightState State)> _integrity = new();
 
     /// <summary>How long to wait for the server to answer before giving up on a clean start.</summary>
     private const int StartupProbeSeconds = 25;
 
+    /// <summary>Lines of child output kept so a startup crash can be explained after the fact.</summary>
+    private const int CapturedLineLimit = 200;
+
     public event Action<string>? LogLine;
     public event Action? Stopped;
     public event Action<int>? Exited;
 
     public bool IsRunning => _proc is { } p && !HasExited(p);
+
     public int? ProcessId => IsRunning ? _proc!.Id : null;
+
+    /// <summary>
+    /// The port the child is actually bound to. Only ever a loopback port: the
+    /// window reads it to build the "open library" URL, so letting a value other
+    /// than a verified local port leak in here would put a remote host into a
+    /// browser on the user's machine.
+    /// </summary>
     public int ActivePort { get; private set; }
 
     public IReadOnlyList<ZimEntry> Library()
@@ -80,6 +120,7 @@ public sealed class KiwixService : IDisposable
 
     // ---------------------------------------------------------------- preflight
 
+    /// <summary>Exactly the five checks the WinUI front-end shows, in the same order.</summary>
     public IReadOnlyList<PreflightItem> Preflight(int port)
     {
         var items = new List<PreflightItem>();
@@ -116,7 +157,33 @@ public sealed class KiwixService : IDisposable
 
     public async Task<StartResult> StartAsync(int requestedPort, CancellationToken ct = default)
     {
+        // A second press of a start button while the first start is still waiting
+        // for the port would launch a second kiwix-serve, and the two would then
+        // fight over the same ZIM handles. The flag is interlocked rather than a
+        // plain bool so the self-test path (no UI thread) is protected too.
+        if (Interlocked.CompareExchange(ref _startInFlight, 1, 0) != 0)
+        {
+            LogLine?.Invoke("! 已有一个启动流程在进行中，本次请求被忽略。");
+            return StartResult.StartInFlight;
+        }
+
+        try
+        {
+            return await StartCoreAsync(requestedPort, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            Volatile.Write(ref _startInFlight, 0);
+        }
+    }
+
+    private async Task<StartResult> StartCoreAsync(int requestedPort, CancellationToken ct)
+    {
         if (IsRunning) return StartResult.AlreadyRunning;
+
+        // Free the handle of the previous child now: nothing is waiting on it,
+        // and its exit code has long since been reported.
+        ReleaseRetired();
 
         var pre = Preflight(requestedPort);
         PreflightItem? Find(string k) => pre.FirstOrDefault(p => p.Key == k);
@@ -134,20 +201,16 @@ public sealed class KiwixService : IDisposable
         if (BundleLayout.PortInUse(port))
         {
             var alt = BundleLayout.FreePort(port);
-            // We never terminate whoever owns the original port.
+            // We never terminate whoever owns the original port, and we say so
+            // out loud rather than silently succeeding on a different one.
             LogLine?.Invoke($"! 端口 {port} 已被其它程序占用。");
             LogLine?.Invoke($"  本应用没有结束该程序，已改用端口 {alt}。");
             port = alt;
         }
 
         var exe = BundleLayout.ServeBinary;
-        // The guard has to be written as OperatingSystem.IsWindows() rather than
-        // BundleLayout.IsWindows: only the former is understood by the
-        // platform-compatibility analyzer, so this compiles warning-free.
-        if (!OperatingSystem.IsWindows()) MakeExecutable(exe);
-
         var args = new List<string> { $"--port={port}" };
-        args.AddRange(zims.Select(z => Quote(Path.Combine(BundleLayout.ZimDirectory, z.Name))));
+        args.AddRange(zims.Select(z => Path.Combine(BundleLayout.ZimDirectory, z.Name)));
 
         var psi = new ProcessStartInfo(exe)
         {
@@ -174,11 +237,12 @@ public sealed class KiwixService : IDisposable
 
         ActivePort = port;
         var started = _proc;
+        var generation = ++_generation;
         // This start attempt is going to report its own child's death, with the
         // exit code and the captured output, so the Exited handler must keep its
         // hands off and not raise a second, poorer report of the same event.
-        var generation = ++_generation;
         _selfReported = generation;
+
         started.EnableRaisingEvents = true;
         started.Exited += (_, _) =>
         {
@@ -187,46 +251,22 @@ public sealed class KiwixService : IDisposable
             // code of an unrelated process.
             var code = SafeExitCode(started);
             // Retire only. Disposing here would race the startup probe for
-            // HasExited and turn a reported crash into a crash of the launcher.
+            // ExitCode and turn a reported crash into a crash of the launcher.
             _retired = started;
             if (generation == _selfReported) return;
             if (ReferenceEquals(_proc, started)) _proc = null;
             Exited?.Invoke(code);
-            Stopped?.Invoke();
         };
 
-        // Everything the child prints, kept so a startup crash can be explained.
-        var captured = new System.Collections.Concurrent.ConcurrentQueue<string>();
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var err = started.StandardError.ReadToEndAsync(ct);
-                while (await started.StandardOutput.ReadLineAsync(ct) is { } line)
-                {
-                    if (captured.Count > 200) captured.TryDequeue(out _);
-                    captured.Enqueue(line);
-                    LogLine?.Invoke(line);
-                }
-                var e = await err;
-                if (!string.IsNullOrWhiteSpace(e))
-                {
-                    foreach (var line in e.Split('\n'))
-                    {
-                        if (captured.Count > 200) captured.TryDequeue(out _);
-                        captured.Enqueue(line);
-                    }
-                    LogLine?.Invoke(e);
-                }
-            }
-            catch { }
-        }, ct);
-
-        // A live process is not a serving server. Reporting success here is what
-        // made the first release look broken: kiwix-serve would die a moment
-        // later and the window kept claiming everything was fine.
         try
         {
+            // Everything the child prints, kept so a startup crash can be explained.
+            var captured = new ConcurrentQueue<string>();
+            _ = Task.Run(() => PumpOutputAsync(started, captured, ct), CancellationToken.None);
+
+            // A live process is not a serving server. Reporting success here is
+            // what made the first release look broken: kiwix-serve would die a
+            // moment later and the window kept claiming everything was fine.
             var deadline = DateTime.UtcNow.AddSeconds(StartupProbeSeconds);
             while (DateTime.UtcNow < deadline)
             {
@@ -240,7 +280,7 @@ public sealed class KiwixService : IDisposable
                     return StartResult.Died(code, tail);
                 }
                 if (BundleLayout.HttpAlive(port, 800)) return StartResult.Ok(port);
-                await Task.Delay(300, ct);
+                await Task.Delay(300, ct).ConfigureAwait(false);
             }
 
             // Still running but not answering yet. A 100 GB+ library can take a
@@ -254,30 +294,57 @@ public sealed class KiwixService : IDisposable
         }
     }
 
+    private async Task PumpOutputAsync(Process started, ConcurrentQueue<string> captured, CancellationToken ct)
+    {
+        try
+        {
+            var err = started.StandardError.ReadToEndAsync(ct);
+            while (await started.StandardOutput.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
+            {
+                if (captured.Count > CapturedLineLimit) captured.TryDequeue(out _);
+                captured.Enqueue(line);
+                LogLine?.Invoke(line);
+            }
+            var e = await err.ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(e))
+            {
+                foreach (var line in e.Split('\n'))
+                {
+                    if (captured.Count > CapturedLineLimit) captured.TryDequeue(out _);
+                    captured.Enqueue(line);
+                }
+                LogLine?.Invoke(e);
+            }
+        }
+        catch { /* the pipes close when the child dies; nothing to report */ }
+    }
+
     public void Stop()
     {
-        var proc = _proc;
-        // Not `if (_proc is null || _proc.HasExited)`: the field is read twice and
-        // the Exited handler can retire the handle in between, so the second read
-        // would be a question asked of a freed object.
-        if (proc is null || HasExited(proc)) return;
+        if (_proc is null || HasExited(_proc)) return;
         LogLine?.Invoke("正在停止服务 ...");
         try
         {
-            // kiwix-serve is a console process and never has a main window, so
-            // CloseMainWindow is a no-op; go straight for a graceful-ish kill.
-            if (!proc.WaitForExit(3000)) proc.Kill(entireProcessTree: true);
+            // kiwix-serve is a console process and never owns a main window, so
+            // CloseMainWindow is a no-op; go straight for a kill, but always of
+            // the handle we started ourselves.
+            if (!_proc.WaitForExit(3000)) _proc.Kill(entireProcessTree: true);
         }
-        catch { try { proc.Kill(entireProcessTree: true); } catch { } }
+        catch { try { _proc.Kill(entireProcessTree: true); } catch { /* already gone */ } }
+
+        // Give the Exited handler a moment to retire the child, so the handle
+        // that is about to be released is the one it published.
+        for (var i = 0; i < 20 && _retired is null; i++) Thread.Sleep(25);
+        ReleaseRetired();
     }
 
     /// <summary>
     /// The version string the bundled kiwix-serve actually reports.
     ///
     /// It cannot be hardcoded: upstream does not publish every platform on every
-    /// release, so for 3.8.2 the Windows build is 3.8.1. The UI used to claim
-    /// 3.8.2 on Windows, which was simply wrong. Probed once and cached, and
-    /// failure is not fatal -- it is only a label.
+    /// release, so for a 3.8.2 bundle the Windows build can be 3.8.1. The UI
+    /// used to claim the release number, which was simply wrong. Probed once and
+    /// cached; failure is not fatal because it is only a label.
     /// </summary>
     public string KiwixToolsVersion
     {
@@ -303,7 +370,7 @@ public sealed class KiwixService : IDisposable
                     if (m.Success) _version = m.Groups[1].Value;
                 }
             }
-            catch { }
+            catch { /* no binary to ask: "未知" is the honest answer */ }
             return _version;
         }
     }
@@ -314,6 +381,7 @@ public sealed class KiwixService : IDisposable
     {
         var dead = _proc;
         _proc = null;
+        ActivePort = 0;
         try { dead?.Dispose(); } catch { /* the handle is going away regardless */ }
         ReleaseRetired();
         Stopped?.Invoke();
@@ -321,7 +389,7 @@ public sealed class KiwixService : IDisposable
 
     /// <summary>
     /// Frees a child that has exited and been reported on. Never called while a
-    /// start attempt could still be reading HasExited or ExitCode off it.
+    /// start attempt could still be reading ExitCode off it.
     /// </summary>
     private void ReleaseRetired()
     {
@@ -332,13 +400,17 @@ public sealed class KiwixService : IDisposable
         try { dead.Dispose(); } catch { }
     }
 
+    private static int SafeExitCode(Process? p)
+    {
+        try { return p?.ExitCode ?? 0; } catch { return 0; }
+    }
+
     /// <summary>
     /// HasExited, but it cannot throw.
     ///
-    /// The Exited event is raised on a threadpool thread, and its handler frees
-    /// the Process, while the startup probe -- and the periodic liveness check
-    /// that reads IsRunning off the UI thread -- are still asking the very same
-    /// question about the very same object. Reading HasExited on a disposed
+    /// The Exited event is raised on a threadpool thread and its handler
+    /// disposes the Process, while the startup probe is still asking the very
+    /// same question about the very same object. Reading HasExited on a disposed
     /// Process throws InvalidOperationException, and that turns the one failure
     /// the user most needs explained -- a kiwix-serve that quit before it ever
     /// served -- into an unhandled exception that takes the whole window down
@@ -350,33 +422,24 @@ public sealed class KiwixService : IDisposable
         if (p is null) return true;
         try { return p.HasExited; }
         catch (InvalidOperationException) { return true; }
-    }
-
-    private static int SafeExitCode(Process? p)
-    {
-        try { return p?.ExitCode ?? 0; } catch { return 0; }
-    }
-
-    private static string Quote(string s) => s.Contains(' ') ? "\"" + s + "\"" : s;
-
-    /// <summary>Add the owner execute bit so a ZIM-less copy of the bundle works.</summary>
-    /// <remarks>
-    /// Unix permission bits have no meaning on Windows, and the USB bundle is
-    /// normally authored on Windows, so a ZIM-less copy can arrive without the
-    /// bit set. Best effort: a filesystem that refuses the call is not fatal.
-    /// </remarks>
-    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
-    private static void MakeExecutable(string path)
-    {
-        try
-        {
-            File.SetUnixFileMode(path,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        }
-        catch { }
+        catch (SystemException) { return true; }
     }
 
     // ---------------------------------------------------------------- self check
+
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(25) };
+
+    /// <summary>
+    /// Hard boundary of the product: the only host this app ever talks to is the
+    /// loopback address of the kiwix-serve child we started ourselves. Asserted
+    /// rather than assumed, so a future edit that points the catalog probe at a
+    /// LAN address fails loudly instead of quietly phoning home.
+    /// </summary>
+    private static void AssertLoopback(Uri uri)
+    {
+        if (!IPAddress.TryParse(uri.Host, out var ip) || !IPAddress.IsLoopback(ip))
+            throw new InvalidOperationException($"拒绝非本机请求: {uri}");
+    }
 
     /// <summary>
     /// Asks the server how many books it actually loaded. A running process is
@@ -384,8 +447,9 @@ public sealed class KiwixService : IDisposable
     /// </summary>
     public async Task<int> CountLoadedBooksAsync(int port, CancellationToken ct = default)
     {
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(25) };
-        var body = await client.GetStringAsync($"http://127.0.0.1:{port}/catalog/v2/entries", ct);
+        var uri = new Uri($"http://127.0.0.1:{port}/catalog/v2/entries");
+        AssertLoopback(uri);
+        var body = await Http.GetStringAsync(uri, ct).ConfigureAwait(false);
         return Regex.Matches(body, "<entry>").Count;
     }
 
@@ -397,8 +461,8 @@ public sealed class KiwixService : IDisposable
     public IReadOnlyDictionary<string, string> LoadBaseline()
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (!File.Exists(BundleLayout.LibraryDirectory)) return map;
-        foreach (var line in File.ReadAllLines(BundleLayout.LibraryDirectory))
+        if (!File.Exists(BundleLayout.IntegrityBaseline)) return map;
+        foreach (var line in File.ReadAllLines(BundleLayout.IntegrityBaseline))
         {
             var m = BaselineLine.Match(line.Trim());
             if (m.Success) map[m.Groups[2].Value] = m.Groups[1].Value.ToUpperInvariant();
@@ -406,7 +470,11 @@ public sealed class KiwixService : IDisposable
         return map;
     }
 
-    /// <summary>Explicit, on-demand only. Never runs at startup.</summary>
+    /// <summary>
+    /// Explicit, on-demand only -- never at startup. Hashing 150 GB off a USB
+    /// stick takes minutes, and a product that did it silently would look hung
+    /// on every launch.
+    /// </summary>
     public async Task VerifyAsync(IProgress<(string Name, double Fraction, string Result)> progress,
                                    CancellationToken ct = default)
     {
@@ -415,13 +483,16 @@ public sealed class KiwixService : IDisposable
         {
             var path = Path.Combine(BundleLayout.ZimDirectory, name);
             progress.Report((name, 0, "计算中"));
-            using var sha = System.Security.Cryptography.SHA256.Create();
+            // FileShare.Read + FileAccess.Read: the ZIM files are the user's
+            // data and are treated as strictly read-only. Nothing here can open
+            // one for writing, so a verify can never damage the library.
+            using var sha = SHA256.Create();
             await using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
                                                 bufferSize: 8 * 1024 * 1024, useAsync: true);
             var buffer = new byte[8 * 1024 * 1024];
             long read = 0;
             int n;
-            while ((n = await fs.ReadAsync(buffer, ct)) > 0)
+            while ((n = await fs.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
             {
                 sha.TransformBlock(buffer, 0, n, null, 0);
                 read += n;
@@ -442,30 +513,7 @@ public sealed class KiwixService : IDisposable
     public void Dispose()
     {
         Stop();
-        // Nothing can be waiting on a start attempt at this point, so the handle
-        // the Exited handler parked is safe to free after all.
+        _proc = null;
         ReleaseRetired();
     }
-}
-
-public enum StartResultKind
-{
-    Ok, AlreadyRunning, MissingBinary, UnsupportedPlatform, NoLibrary, LowMemory,
-    LaunchFailed, DiedDuringStartup
-}
-
-public readonly record struct StartResult(StartResultKind Kind, int Port = 0, double MemoryGb = 0,
-                                          string Message = "", int ExitCode = 0)
-{
-    public static StartResult Ok(int port) => new(StartResultKind.Ok, port);
-    public static StartResult AlreadyRunning => new(StartResultKind.AlreadyRunning);
-    public static StartResult MissingBinary => new(StartResultKind.MissingBinary);
-    public static StartResult UnsupportedPlatform => new(StartResultKind.UnsupportedPlatform);
-    public static StartResult NoLibrary => new(StartResultKind.NoLibrary);
-    public static StartResult LowMemory(double gb) => new(StartResultKind.LowMemory, MemoryGb: gb);
-    public static StartResult LaunchFailed(string m) => new(StartResultKind.LaunchFailed, Message: m);
-
-    /// <summary>The process came up and then quit before it ever served a request.</summary>
-    public static StartResult Died(int exitCode, string output) =>
-        new(StartResultKind.DiedDuringStartup, Message: output, ExitCode: exitCode);
 }

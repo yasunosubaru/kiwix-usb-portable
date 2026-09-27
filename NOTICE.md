@@ -49,28 +49,53 @@ GUI 启动器与 kiwix-serve 之间没有版本耦合（它们只是通过命令
 
 ## 2. GUI 运行时
 
-仓库内提供**两套** Windows 图形启动器，功能与安全边界完全一致，可任选其一：
+仓库内提供**三套** Windows 图形启动器，功能与安全边界完全一致，可任选其一：
 
 | 启动器 | 技术栈 | 产物 | 许可 |
 |---|---|---|---|
 | `app/gui/KiwixWinUI/` | **WinUI 3**（Windows App SDK 1.7）| 自包含目录，约 166 MB | WinUI 3 **MIT**；Windows App SDK **MIT**；.NET Runtime **MIT** |
+| `app/gui/KiwixApple/` | **Avalonia 11.3.22**（`net8.0-windows` / `win-x64`）| 自包含目录，215 个文件，约 94 MB | Avalonia **MIT**；.NET Runtime **MIT** |
 | `app/gui/KiwixUSB.exe` | Python 3 + tkinter | 单文件，约 11 MB | Python **PSF**；PyInstaller **GPL-2.0-or-later**（附 bootloader 例外条款）；Tcl/Tk **BSD-style** |
 | `app/gui/KiwixUSB-linux-x86_64` | Python 3 + tkinter | 单文件，约 12 MB | 同上 |
+
+### `src/KiwixApple/` 的来源说明
+
+`src/KiwixApple/` 是**本项目自己的代码**，构建在 **Avalonia**（**MIT**）之上。
+目录名里的 `Apple` 指的是**视觉风格**，不是技术来源。
+
+- 该程序按 Apple 的 **Human Interface Guidelines** 复刻 UIKit 的设计语言与交互
+  习惯：大标题随滚动收起为内联标题、10pt 圆角的 inset 分组列表、Apple 语义色
+  （深色外观另算一套）、SF 字阶、44pt 最小点击区、`UIAlertController` 风格浮层
+- 本项目中**没有一行 UIKit 代码**，也**不自称是 UIKit 移植版**。UIKit 只随
+  iOS / tvOS / macOS SDK 发布，没有任何 Windows 工具链能编译它并产出 exe，
+  Swift 的 Windows 移植版只提供 Foundation，不提供 UIKit——这是工具链的硬事实
+- **不包含任何 Apple 的代码、素材、字体或框架**：应用不内嵌 SF 字体，正文用
+  Windows 自带的 `Segoe UI`（Windows 上最接近 SF Pro 的系统字体）、等宽用
+  `Consolas`，也不打包任何 Apple 图像；画出来的一切都是矢量形状或系统字体的字形
+- Apple 商标与 HIG 在此**仅作为设计参考**被引用。Apple、「Apple」标志等归
+  Apple Inc. 所有，本项目与 Apple 无从属关系，也未获其授权或背书
 
 应用图标（`src\branding\kiwix.ico`）为本项目原创设计，由 `make_icon.py` 程序化生成，
 不含任何第三方素材或字体轮廓；所用配色取自本项目界面自身的调色板。
 
 整包根目录的 `Kiwix.exe` 是入口：一个约 130 KB 的原生 Win32 程序（`src/launcher/winlauncher.c`），
-只依赖 `user32.dll` / `kernel32.dll`，不引入任何第三方组件。优先启动 WinUI 3 版；
-该目录不存在时自动回退到 tkinter 单文件版。`launcher/` 下的 `.cmd` 是等价的脚本入口。
+只依赖 `user32.dll` / `kernel32.dll`，不引入任何第三方组件。依次尝试
+`app\gui\KiwixWinUI\KiwixWinUI.exe`（主界面）→
+`app\gui\KiwixApple\KiwixApple.exe`（同样自包含，缺 Windows App Runtime 的机器仍可运行）→
+`app\gui\KiwixUSB.exe`（最小、最保守的兜底）；三个都不存在时弹窗把三条路径全列出来。
+`launcher/` 下的 `.cmd` 是等价的脚本入口（目前只含 WinUI 3 与 tkinter 两级）。
 
 **为什么体积差这么多**
 
 - WinUI 3 走的是**自包含（self-contained）**发布。为了做到「U 盘插上即用、不需要另外安装
   Windows App Runtime」，.NET 运行时与 Windows App Runtime 全部打进产物（约 480 个文件，166 MB）。
+- Avalonia 版同样自包含（约 215 个文件、94 MB），比 WinUI 3 小是因为它不需要
+  Windows App Runtime，只带 .NET 运行时与 Skia 渲染库。它**刻意不做单文件发布**：
+  自包含单文件 exe 首次运行必须把 Skia / HarfBuzz 的原生二进制解压到 `%TEMP%`，
+  在只读 U 盘上会直接失败，而整包本来就以目录形式分发。
 - tkinter 版用 PyInstaller `--onefile` 打包，Python 解释器一并压进单个 exe，因此只有 11 MB。
 
-两者都**不需要安装、不需要预装 Python 或 .NET 运行时**。
+三者都**不需要安装、不需要预装 Python 或 .NET 运行时**。
 
 ---
 

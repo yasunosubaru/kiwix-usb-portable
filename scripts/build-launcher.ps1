@@ -30,15 +30,21 @@ New-Item -ItemType Directory -Force -Path $Output | Out-Null
 # The launcher and the WinUI 3 app ship as one bundle, so they carry the same
 # version. It is written down exactly once, in KiwixWinUI.csproj; hardcoding a
 # second copy here is how the window ended up claiming v1.1.2 in a v1.2.0 bundle.
-$csproj = Join-Path $Root 'src\KiwixWinUI\KiwixWinUI.csproj'
-$version = '0.0.0'
-if (Test-Path -LiteralPath $csproj) {
-    $m = [regex]::Match((Get-Content $csproj -Raw), '<Version>([^<]+)</Version>')
-    if ($m.Success) { $version = $m.Groups[1].Value.Trim() }
+# The three executables in a bundle share one version, declared in
+# src\Directory.Build.props. This stub has no project file of its own, so it
+# parses that file. A missing or unreadable <Version> is a hard error rather
+# than a fallback: guessing here is how the launcher ends up stamping a
+# different number than the GUI sitting next to it.
+$props = Join-Path $Root 'src\Directory.Build.props'
+if (-not (Test-Path -LiteralPath $props)) {
+    throw "missing version source: $props"
 }
+$m = [regex]::Match((Get-Content $props -Raw), '<Version>([^<]+)</Version>')
+if (-not $m.Success) { throw "no <Version> element in $props" }
+$version = $m.Groups[1].Value.Trim()
 $version4 = ($version -split '[^0-9.]')[0..3] -join '.'
 while ($version4.Split('.').Count -lt 4) { $version4 += '.0' }
-Write-Host "  version  : $version (from KiwixWinUI.csproj)"
+Write-Host "  version  : $version (from src\Directory.Build.props)"
 Write-Host ("  icon     : {0}  {1:N0} bytes" -f (Split-Path $Icon -Leaf), (Get-Item $Icon).Length)
 
 # Locate a Visual Studio installation with the x64 C toolchain.

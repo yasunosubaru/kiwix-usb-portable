@@ -1,0 +1,259 @@
+﻿<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ===================================================================
+       Type ramp. Sizes and weights are the SF steps from the Human Interface
+       Guidelines; the colour is the semantic label colour, never a literal.
+       =================================================================== -->
+
+  <Style Selector="TextBlock">
+    <Setter Property="FontFamily" Value="{StaticResource AppleFont}" />
+    <Setter Property="FontSize" Value="{StaticResource SizeBody}" />
+    <Setter Property="Foreground" Value="{DynamicResource Label}" />
+    <Setter Property="TextWrapping" Value="NoWrap" />
+  </Style>
+
+  <Style Selector="TextBlock.largeTitle">
+    <Setter Property="FontSize" Value="{StaticResource SizeLargeTitle}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="0.2" />
+  </Style>
+
+  <Style Selector="TextBlock.title2">
+    <Setter Property="FontSize" Value="{StaticResource SizeTitle2}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.title3">
+    <Setter Property="FontSize" Value="{StaticResource SizeTitle3}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.headline">
+    <Setter Property="FontSize" Value="{StaticResource SizeHeadline}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.subhead">
+    <Setter Property="FontSize" Value="{StaticResource SizeSubhead}" />
+  </Style>
+
+  <Style Selector="TextBlock.footnote">
+    <Setter Property="FontSize" Value="{StaticResource SizeFootnote}" />
+  </Style>
+
+  <Style Selector="TextBlock.caption1">
+    <Setter Property="FontSize" Value="{StaticResource SizeCaption1}" />
+  </Style>
+
+  <Style Selector="TextBlock.caption2">
+    <Setter Property="FontSize" Value="{StaticResource SizeCaption2}" />
+  </Style>
+
+  <Style Selector="TextBlock.mono">
+    <Setter Property="FontFamily" Value="{StaticResource AppleMonoFont}" />
+    <Setter Property="FontSize" Value="{StaticResource SizeCaption1}" />
+  </Style>
+
+  <!--
+    Grouped-table section header: small, semibold, letter-spaced, secondary
+    label colour, the classic inset-grouped header.
+
+    The uppercase half of the style is applied in code, in UpperCaseHeaders(),
+    because Avalonia 11 has no TextTransform on TextBlock and setting one here
+    simply fails to resolve. Doing it in code rather than hardcoding the strings
+    keeps the rule real: a header that ever gains a Latin run gets shouted
+    automatically, and Chinese, which has no case, is left alone.
+  -->
+  <Style Selector="TextBlock.sectionHeader">
+    <Setter Property="FontSize" Value="{StaticResource SizeFootnote}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource SecondaryLabel}" />
+    <Setter Property="LetterSpacing" Value="0.6" />
+  </Style>
+
+  <!-- Inset grouped list row. Label on the leading edge, value trailing. -->
+  <Style Selector="TextBlock.rowValue">
+    <Setter Property="Foreground" Value="{DynamicResource SecondaryLabel}" />
+  </Style>
+
+  <Style Selector="TextBlock.rowValue.ok">
+    <Setter Property="Foreground" Value="{DynamicResource SystemGreen}" />
+  </Style>
+  <Style Selector="TextBlock.rowValue.warn">
+    <Setter Property="Foreground" Value="{DynamicResource SystemOrange}" />
+  </Style>
+  <Style Selector="TextBlock.rowValue.fail">
+    <Setter Property="Foreground" Value="{DynamicResource SystemRed}" />
+  </Style>
+
+  <!-- Status line under the primary action, colour-coded by state class. -->
+  <Style Selector="TextBlock.statusIdle">
+    <Setter Property="Foreground" Value="{DynamicResource SecondaryLabel}" />
+  </Style>
+  <Style Selector="TextBlock.statusBusy">
+    <Setter Property="Foreground" Value="{DynamicResource SystemBlue}" />
+  </Style>
+  <Style Selector="TextBlock.statusOk">
+    <Setter Property="Foreground" Value="{DynamicResource SystemGreen}" />
+  </Style>
+  <Style Selector="TextBlock.statusWarn">
+    <Setter Property="Foreground" Value="{DynamicResource SystemOrange}" />
+  </Style>
+  <Style Selector="TextBlock.statusError">
+    <Setter Property="Foreground" Value="{DynamicResource SystemRed}" />
+  </Style>
+
+  <!-- ===================================================================
+       Inset grouped list container. 10pt corners, and the horizontal padding
+       is what does the work the HIG describes as "separators inset to the
+       text origin": the separator is a plain full-width child of the padded
+       content box, so it starts exactly where the row text does.
+       =================================================================== -->
+
+  <Style Selector="Border.group">
+    <Setter Property="Background" Value="{DynamicResource SecondarySystemGroupedBackground}" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusMedium}" />
+    <Setter Property="Padding" Value="16,0" />
+  </Style>
+
+  <Style Selector="Border.separator">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Background" Value="{DynamicResource Separator}" />
+  </Style>
+
+  <!-- Status pill in the navigation bar, the one place a colour fills a shape. -->
+  <Style Selector="Border.badgeIdle">
+    <Setter Property="Background" Value="{DynamicResource SystemFill}" />
+  </Style>
+  <Style Selector="Border.badgeOk">
+    <Setter Property="Background" Value="{DynamicResource SystemGreenTint}" />
+  </Style>
+  <Style Selector="Border.badgeBusy">
+    <Setter Property="Background" Value="{DynamicResource SystemOrangeTint}" />
+  </Style>
+
+  <Style Selector="TextBlock.badgeIdle">
+    <Setter Property="Foreground" Value="{DynamicResource SecondaryLabel}" />
+  </Style>
+  <Style Selector="TextBlock.badgeOk">
+    <Setter Property="Foreground" Value="{DynamicResource SystemGreen}" />
+  </Style>
+  <Style Selector="TextBlock.badgeBusy">
+    <Setter Property="Foreground" Value="{DynamicResource SystemOrange}" />
+  </Style>
+
+  <!-- Alert sheet: an elevated surface, not a MessageBox bolted to the screen. -->
+  <Style Selector="Border.alertCard">
+    <Setter Property="Background" Value="{DynamicResource AlertBackground}" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusAlert}" />
+    <Setter Property="Padding" Value="20,18" />
+    <Setter Property="MaxWidth" Value="400" />
+    <Setter Property="BoxShadow" Value="0 12 40 #59000000" />
+  </Style>
+
+  <!-- ===================================================================
+       Buttons: filled / tinted / plain, the three HIG styles. Every one of
+       them is at least 44pt tall because this is a launcher people tap on a
+       laptop trackpad as often as they click.
+       =================================================================== -->
+
+  <Style Selector="Button.filled">
+    <Setter Property="Background" Value="{DynamicResource SystemBlue}" />
+    <Setter Property="Foreground" Value="#FFFFFFFF" />
+  </Style>
+
+  <Style Selector="Button.filled.destructive">
+    <Setter Property="Background" Value="{DynamicResource SystemRed}" />
+    <Setter Property="Foreground" Value="#FFFFFFFF" />
+  </Style>
+
+  <Style Selector="Button.tinted">
+    <Setter Property="Background" Value="{DynamicResource SystemBlueTint}" />
+    <Setter Property="Foreground" Value="{DynamicResource SystemBlue}" />
+  </Style>
+
+  <Style Selector="Button.plain">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource SystemBlue}" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
+  <Style Selector="Button.footer">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+  </Style>
+
+  <!-- Alert actions: text-only, tinted, full width, hairline between them. -->
+  <Style Selector="Button.alertAction">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource SystemBlue}" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="MinHeight" Value="{StaticResource TouchTarget}" />
+    <Setter Property="Padding" Value="16,0" />
+    <Setter Property="FontSize" Value="{StaticResource SizeBody}" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Button.alertAction.strong">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="Button.alertAction.destructive">
+    <Setter Property="Foreground" Value="{DynamicResource SystemRed}" />
+  </Style>
+
+  <!-- ===================================================================
+       Pre-flight and library rows. The status mark is a stroked path rather
+       than a glyph, so it is crisp at any scale factor and never depends on a
+       font shipping U+2713.
+       =================================================================== -->
+
+  <Style Selector="Path.statusMark">
+    <Setter Property="Width" Value="13" />
+    <Setter Property="Height" Value="13" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="StrokeThickness" Value="2" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="StrokeJoin" Value="Round" />
+    <Setter Property="Fill" Value="Transparent" />
+  </Style>
+
+  <Style Selector="Path.statusMark.ok">
+    <Setter Property="Stroke" Value="{DynamicResource SystemGreen}" />
+  </Style>
+  <Style Selector="Path.statusMark.warn">
+    <Setter Property="Stroke" Value="{DynamicResource SystemOrange}" />
+  </Style>
+  <Style Selector="Path.statusMark.fail">
+    <Setter Property="Stroke" Value="{DynamicResource SystemRed}" />
+  </Style>
+  <Style Selector="Path.statusMark.unknown">
+    <Setter Property="Stroke" Value="{DynamicResource TertiaryLabel}" />
+  </Style>
+
+  <Style Selector="Path.alertGlyph">
+    <Setter Property="Width" Value="26" />
+    <Setter Property="Height" Value="26" />
+    <Setter Property="StrokeThickness" Value="2.2" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="StrokeJoin" Value="Round" />
+    <Setter Property="Fill" Value="Transparent" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Path.alertGlyph.info">
+    <Setter Property="Stroke" Value="{DynamicResource SystemBlue}" />
+  </Style>
+  <Style Selector="Path.alertGlyph.success">
+    <Setter Property="Stroke" Value="{DynamicResource SystemGreen}" />
+  </Style>
+  <Style Selector="Path.alertGlyph.warning">
+    <Setter Property="Stroke" Value="{DynamicResource SystemOrange}" />
+  </Style>
+  <Style Selector="Path.alertGlyph.error">
+    <Setter Property="Stroke" Value="{DynamicResource SystemRed}" />
+  </Style>
+
+</Styles>

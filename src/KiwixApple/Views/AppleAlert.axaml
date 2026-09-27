@@ -1,0 +1,48 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="KiwixApple.Views.AppleAlert"
+             HorizontalAlignment="Stretch"
+             VerticalAlignment="Stretch">
+
+  <Grid>
+    <!-- Scrim: the sheet is modal, so the window behind it is dimmed rather
+         than still clickable while a decision is pending. -->
+    <Border Name="Scrim" Background="{DynamicResource Scrim}" />
+
+    <Border Name="Card"
+            Classes="alertCard"
+            Width="360"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Margin="24">
+      <StackPanel>
+        <Path Name="Glyph" Classes="alertGlyph info" Data="M 12,6.6 L 12,6.7 M 12,12 L 12,25" />
+
+        <TextBlock Name="TitleText"
+                   Classes="headline"
+                   HorizontalAlignment="Center"
+                   TextWrapping="Wrap"
+                   TextAlignment="Center"
+                   Margin="0,14,0,0" />
+
+        <TextBlock Name="MessageText"
+                   Classes="subhead"
+                   Foreground="{DynamicResource SecondaryLabel}"
+                   HorizontalAlignment="Center"
+                   TextWrapping="Wrap"
+                   TextAlignment="Center"
+                   Margin="0,8,0,0" />
+
+        <!-- Hairline between the message and the actions, the way iOS separates
+             the button block of an alert. -->
+        <Border Classes="separator" Margin="0,20,0,0" />
+
+        <StackPanel Margin="0,4,0,0">
+          <Button Name="SecondaryAction" Classes="alertAction" Content="取消" />
+          <Border Name="SecondarySeparator" Classes="separator" />
+          <Button Name="PrimaryAction" Classes="alertAction strong" Content="好" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

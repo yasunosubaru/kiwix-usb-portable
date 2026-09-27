@@ -1,0 +1,149 @@
+﻿<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    Control themes for the two controls a Windows user recognises instantly as
+    "not an Apple app": the button and the text field.
+
+    Both replace Fluent's theme outright, via Theme="{StaticResource ...}" on
+    each instance, and the reason is specific rather than aesthetic. Fluent
+    restyles its template *parts* on :pointerover, :pressed and :focus:
+
+        <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+          <Setter Property="Background" Value="{DynamicResource ButtonBackgroundPointerOver}" />
+
+    A setter on the part outranks the TemplateBinding that would have carried
+    our colour down, so a filled blue button would flash grey the moment the
+    mouse touched it, which is exactly the "default grey chrome" this window
+    must not ship. Owning the template is the only way to guarantee that every
+    visual state is one of the Apple ones.
+  -->
+
+  <ControlTheme x:Key="AppleButton" TargetType="Button">
+    <Setter Property="FontFamily" Value="{StaticResource AppleFont}" />
+    <Setter Property="FontSize" Value="{StaticResource SizeBody}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusLarge}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="16,0" />
+    <Setter Property="MinHeight" Value="{StaticResource TouchTarget}" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Template">
+      <ControlTemplate TargetType="Button">
+        <Border Name="PART_Root"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <Panel>
+            <ContentPresenter Name="PART_Content"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                              RecognizesAccessKey="True" />
+            <!-- Keyboard focus ring, offset 4pt the way iOS draws it, so it
+                 never eats into the label. Pointer focus is deliberately not
+                 enough to show it. -->
+            <Border Name="PART_FocusRing"
+                    IsVisible="False"
+                    IsHitTestVisible="False"
+                    Margin="-4"
+                    BorderBrush="{DynamicResource SystemBlue}"
+                    BorderThickness="2"
+                    CornerRadius="{TemplateBinding CornerRadius}" />
+          </Panel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+
+    <!-- Hover and press are expressed as opacity on the tinted fill, which is
+         what UIKit does; it also means no state can introduce a colour that is
+         not in the palette. Disabled is listed last so it wins over hover. -->
+    <Style Selector="^:pointerover">
+      <Setter Property="Opacity" Value="0.85" />
+    </Style>
+    <Style Selector="^:pressed">
+      <Setter Property="Opacity" Value="0.6" />
+    </Style>
+    <Style Selector="^:disabled">
+      <Setter Property="Opacity" Value="0.4" />
+    </Style>
+    <Style Selector="^:focus /template/ Border#PART_FocusRing">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="^ /template/ ContentPresenter#PART_Content">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+  </ControlTheme>
+
+  <ControlTheme x:Key="AppleTextField" TargetType="TextBox">
+    <Setter Property="FontFamily" Value="{StaticResource AppleFont}" />
+    <Setter Property="FontSize" Value="{StaticResource SizeBody}" />
+    <Setter Property="Foreground" Value="{DynamicResource Label}" />
+    <Setter Property="CaretBrush" Value="{DynamicResource SystemBlue}" />
+    <Setter Property="SelectionBrush" Value="{DynamicResource SystemBlue}" />
+    <Setter Property="Background" Value="{DynamicResource SystemFill}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusMedium}" />
+    <Setter Property="Padding" Value="10,7" />
+    <Setter Property="MinHeight" Value="36" />
+    <Setter Property="Template">
+      <ControlTemplate TargetType="TextBox">
+        <!-- A field in a grouped list has no border of its own: the systemFill
+             background is what separates it from the card, so the blue focus
+             outline of a WPF TextBox has nothing to tint. -->
+        <Border Name="PART_BorderElement"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                MinWidth="{TemplateBinding MinWidth}"
+                MinHeight="{TemplateBinding MinHeight}">
+          <Border Margin="{TemplateBinding BorderThickness}">
+            <DockPanel Name="PART_InnerDockPanel" Margin="{TemplateBinding Padding}">
+              <ScrollViewer Name="PART_ScrollViewer"
+                            HorizontalScrollBarVisibility="{TemplateBinding (ScrollViewer.HorizontalScrollBarVisibility)}"
+                            VerticalScrollBarVisibility="{TemplateBinding (ScrollViewer.VerticalScrollBarVisibility)}"
+                            AllowAutoHide="{TemplateBinding (ScrollViewer.AllowAutoHide)}"
+                            BringIntoViewOnFocusChange="{TemplateBinding (ScrollViewer.BringIntoViewOnFocusChange)}">
+                <TextPresenter Name="PART_TextPresenter"
+                              Text="{TemplateBinding Text, Mode=TwoWay}"
+                              CaretBlinkInterval="{TemplateBinding CaretBlinkInterval}"
+                              CaretIndex="{TemplateBinding CaretIndex}"
+                              SelectionStart="{TemplateBinding SelectionStart}"
+                              SelectionEnd="{TemplateBinding SelectionEnd}"
+                              TextAlignment="{TemplateBinding TextAlignment}"
+                              TextWrapping="{TemplateBinding TextWrapping}"
+                              LineHeight="{TemplateBinding LineHeight}"
+                              LetterSpacing="{TemplateBinding LetterSpacing}"
+                              PasswordChar="{TemplateBinding PasswordChar}"
+                              RevealPassword="{TemplateBinding RevealPassword}"
+                              SelectionBrush="{TemplateBinding SelectionBrush}"
+                              SelectionForegroundBrush="{TemplateBinding SelectionForegroundBrush}"
+                              CaretBrush="{TemplateBinding CaretBrush}"
+                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+              </ScrollViewer>
+            </DockPanel>
+          </Border>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+
+    <Style Selector="^:pointerover /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="{DynamicResource SecondarySystemFill}" />
+    </Style>
+    <Style Selector="^:focus /template/ Border#PART_BorderElement">
+      <!-- Focus reads as a filled field, not an outlined one: the iOS idiom. -->
+      <Setter Property="Background" Value="{DynamicResource TertiarySystemFill}" />
+    </Style>
+    <Style Selector="^:disabled">
+      <Setter Property="Opacity" Value="0.4" />
+    </Style>
+  </ControlTheme>
+
+</ResourceDictionary>

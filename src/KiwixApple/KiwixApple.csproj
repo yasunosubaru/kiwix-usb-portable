@@ -1,0 +1,72 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      WinExe, not Console: the launcher is double-clicked off a USB stick and a
+      console window behind the window is the classic WPF-app look. The selftest
+      flag still gets a working stdout, see Core/ConsoleBridge.cs.
+    -->
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Platforms>x64</Platforms>
+
+    <RootNamespace>KiwixApple</RootNamespace>
+    <AssemblyName>KiwixApple</AssemblyName>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <!--
+      Not a single file on purpose. The bundle ships a plain folder, and a
+      self-contained single-file exe has to extract native Skia/HarfBuzz
+      binaries to %TEMP% on first run, which fails on a stick that is mounted
+      read-only or on a machine where %TEMP% is not writable.
+    -->
+    <PublishSingleFile>false</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <IsPackable>false</IsPackable>
+
+    <!--
+      The same icon the other two front-ends carry. Without this the exe has no
+      RT_GROUP_ICON and Windows shows a blank page in Explorer. MSBuild emits the
+      Win32 resources itself, so this needs no resource compiler.
+    -->
+    <ApplicationIcon>..\branding\kiwix.ico</ApplicationIcon>
+
+    <!-- Reflection bindings: no x:DataType needed on every node of a hand
+         written 400 line theme, and the diff stays reviewable as XAML. -->
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+
+    <!--
+      Single source of truth for the launcher version: src/Directory.Build.props.
+      The WinUI front-end and the native launcher stub read the same file, so the
+      three executables in a bundle cannot drift apart. This project deliberately
+      does not declare a version of its own. When it did, it claimed v1.0.0
+      while the WinUI build next to it claimed v1.2.1.
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Avalonia rather than UIKit: UIKit exists only inside the iOS/tvOS/macOS
+      SDKs and there is no Windows toolchain that can emit an .exe from it.
+      Avalonia renders UIKit's design language (large collapsing titles,
+      inset grouped lists, semantic colours, the SF type ramp) on Windows.
+    -->
+    <PackageReference Include="Avalonia" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+  </ItemGroup>
+
+  <!--
+    No AvaloniaResource items on purpose: the app has no images or embedded
+    fonts, it is a text-and-vector interface. Everything it draws is a shape or
+    a glyph, which is also why it stays legible at 200% DPI.
+  -->
+
+</Project>

@@ -128,6 +128,100 @@ jobs:
           path: ${{ runner.temp }}/winui
           if-no-files-found: error
 
+  # The second front-end. src/launcher/winlauncher.c tries WinUI 3 first and
+  # this one second, so it is the GUI a user sees on a machine that cannot run
+  # the Windows App Runtime -- which is the machine where a broken payload
+  # costs the most. It is a 94 MB self-contained folder, not a single exe, so
+  # every layout step below is the one from build-winui, not a simplified
+  # version of it.
+  build-apple:
+    name: Windows GUI (Avalonia, Apple HIG)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      # --selftest and src/KiwixApple/test-gui-start.ps1 both resolve the
+      # bundle the way the shipped app does: walk up from the executable until a
+      # directory holds zim\ and app\. A runner has neither, so build one here.
+      # It is a fixture, not a library: 149 KB of ZIM plus the kiwix binaries.
+      - name: Stage a bundle layout for the tests to resolve
+        shell: pwsh
+        run: |
+          $root = "${{ runner.temp }}\apple-bundle"
+          New-Item -ItemType Directory -Force -Path "$root\zim", "$root\app" | Out-Null
+          Write-Host "staged bundle: $root"
+      # The same fetch the release job relies on, from the same job that later
+      # executes the binary, so the version the tests probe is a version that
+      # was proven to run on this machine.
+      - name: Fetch kiwix-serve so the tests have a real binary to ask
+        shell: pwsh
+        run: |
+          $env:BUNDLE_DIR = "${{ runner.temp }}\apple-bundle"
+          ./scripts/fetch-kiwix-binaries.ps1
+      - name: A 149 KB library, so the self-test has something to serve
+        shell: pwsh
+        run: |
+          # SelfTest.cs returns "RESULT: FAIL (no library, cannot exercise the
+          # service)" and exit 1 on an empty zim\, so a runner without a library
+          # cannot pass the self-test at all. This is a real ZIM with real
+          # articles, pinned to the commit that last touched it, and it is the
+          # fixture the ZIM toolchain uses in its own test suite. The size is
+          # asserted so a truncated download cannot masquerade as a library that
+          # a server then refuses to open.
+          $zim = "${{ runner.temp }}\apple-bundle\zim\wikibooks_be_all_nopic_2017-02.zim"
+          Invoke-WebRequest -UseBasicParsing -TimeoutSec 300 -OutFile $zim -Uri `
+            'https://raw.githubusercontent.com/openzim/zim-tools/4c47664e1212d3b976b1722db76494fe60ee9be6/test/data/zimfiles/wikibooks_be_all_nopic_2017-02.zim'
+          $f = Get-Item $zim
+          Write-Host ("  {0}  {1} bytes" -f $f.Name, $f.Length)
+          if ($f.Length -ne 152865) { throw "test ZIM is truncated ($($f.Length) bytes, expected 152865)" }
+      # One call, because this is the script a developer runs before pushing:
+      # dotnet publish -c Release -r win-x64 --self-contained true -o <out>,
+      # the four-file check, the staged self-test (RESULT: PASS, else throw) and
+      # the UI-Automation test (non-zero exit, else throw), all in the same
+      # harness, with the 94 MB stage removed in a finally. CI therefore proves
+      # the local build path rather than a second, drifting copy of it.
+      - name: Publish, self-test and drive the real buttons
+        shell: pwsh
+        run: ./src/KiwixApple/build-apple.ps1 -Output "${{ runner.temp }}\apple" -Bundle "${{ runner.temp }}\apple-bundle"
+      - name: The publish is a whole runtime, not a stub
+        shell: pwsh
+        run: |
+          $out = "${{ runner.temp }}\apple"
+          $files = Get-ChildItem $out -Recurse -File
+          $mb = [math]::Round(($files | Measure-Object Length -Sum).Sum / 1MB, 1)
+          Write-Host "$($files.Count) files, $mb MB"
+          # Floors, not exact numbers. A self-contained Avalonia publish is
+          # 215 files / ~95 MB today, but the file set moves with every
+          # Avalonia and .NET patch release, and an exact count would fail a
+          # build over a dependency bump that changed nothing else. What has to
+          # hold is the promise the bundle makes: no install, no prerequisite.
+          # A framework-dependent or trimmed publish lands here as a handful of
+          # files and dies on any machine without .NET on it.
+          if ($files.Count -lt 150) { throw "suspiciously small Avalonia output ($($files.Count) files, expected >= 150)" }
+          if ($mb -lt 60) { throw "suspiciously small Avalonia output ($mb MB, expected >= 60)" }
+          # Skia and HarfBuzz are native and load lazily from next to the exe,
+          # so a publish that dropped them passes every file-existence check and
+          # then shows a blank window on the user's machine.
+          foreach ($f in 'KiwixApple.exe','KiwixApple.dll','av_libglesv2.dll','libSkiaSharp.dll','libHarfBuzzSharp.dll') {
+            if (-not (Test-Path "$out\$f")) { throw "missing $f" }
+          }
+          Write-Host "native graphics stack present"
+      - name: The Avalonia executable must carry the app icon
+        shell: pwsh
+        run: ./scripts/verify-icon.ps1 -Exe "${{ runner.temp }}\apple\KiwixApple.exe"
+      # One path, rooted at the folder: upload-artifact takes the least common
+      # ancestor of the paths it is given, so this uploads the 215 files at the
+      # artifact root and the release job can put them in
+      # app/gui/KiwixApple/ itself. See the comment in the release job about
+      # what happens when that is not how it is done.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-apple
+          path: ${{ runner.temp }}/apple
+          if-no-files-found: error
+
   build-linux:
     name: Linux GUI (glibc 2.36 baseline)
     runs-on: ubuntu-latest
@@ -180,7 +274,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [build-windows, build-winui, build-linux, build-kiwix-windows]
+    needs: [build-windows, build-winui, build-apple, build-linux, build-kiwix-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -189,9 +283,9 @@ jobs:
         # are silently skipped. The tag is only a publishing target and is
         # passed to the release step as `tag_name` instead.
       # One subdirectory per artifact, on purpose. merge-multiple would flatten
-      # all three into artifacts/, which (a) hides where the WinUI payload came
-      # from and (b) drops its 486 runtime files straight into the directory
-      # that the release step checksums and publishes.
+      # all of them into artifacts/, which (a) hides where the WinUI payload
+      # came from and (b) drops its 486 runtime files straight into the
+      # directory that the release step checksums and publishes.
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -199,7 +293,7 @@ jobs:
       - name: Assert every build job delivered its artifact
         run: |
           missing=0
-          for d in gui-windows gui-linux gui-winui; do
+          for d in gui-windows gui-linux gui-winui gui-apple; do
             if [ -d "artifacts/$d" ]; then
               echo "  OK      artifacts/$d  ($(find "artifacts/$d" -type f | wc -l) files)"
             else
@@ -210,9 +304,34 @@ jobs:
           test -f artifacts/gui-windows/KiwixUSB.exe            || { echo "::error::no KiwixUSB.exe"; missing=1; }
           test -f artifacts/gui-linux/KiwixUSB-linux-x86_64     || { echo "::error::no KiwixUSB-linux-x86_64"; missing=1; }
           test -f artifacts/gui-winui/KiwixWinUI.exe            || { echo "::error::no KiwixWinUI.exe"; missing=1; }
+          test -f artifacts/gui-apple/KiwixApple.exe            || { echo "::error::no KiwixApple.exe"; missing=1; }
           if [ ! -f artifacts/gui-windows/Kiwix.exe ]; then
             echo "::error::no Kiwix.exe launcher; artifacts/gui-windows contains:"
             find artifacts/gui-windows -type f | sed 's/^/  /'
+            missing=1
+          fi
+          # The two folder payloads have to be recognisable as folders, not as
+          # a pile of loose runtime files. Flattened, a download-artifact with
+          # the wrong pattern scatters 215 Avalonia and 486 WinUI files into
+          # artifacts/ -- the directory the release step checksums and uploads
+          # -- and neither app/gui/KiwixApple/ nor app/gui/KiwixWinUI/ is ever
+          # created, so the launcher finds no GUI and the zip ships a corpse.
+          flat=$(find artifacts -maxdepth 1 -type f \
+                   \( -name 'KiwixApple*' -o -name 'KiwixWinUI*' -o -name 'av_lib*' \
+                      -o -name 'libSkiaSharp*' -o -name 'libHarfBuzzSharp*' \
+                      -o -name '*.deps.json' -o -name '*.runtimeconfig.json' \) | wc -l)
+          if [ "$flat" -ne 0 ]; then
+            echo "::error::$flat GUI runtime file(s) landed flat in artifacts/ instead of a per-artifact subdirectory:"
+            find artifacts -maxdepth 1 -type f | sed 's/^/  /'
+            missing=1
+          fi
+          # A payload that is present but truncated is the same failure with a
+          # different cause: the front-end starts and then dies on a missing
+          # runtime file. Both floors mirror the ones in the build jobs.
+          n=$(find artifacts/gui-apple -type f 2>/dev/null | wc -l)
+          echo "  Avalonia payload: $n files"
+          if [ "$n" -lt 150 ]; then
+            echo "::error::artifacts/gui-apple is truncated ($n files, expected >= 150)"
             missing=1
           fi
           exit $missing
@@ -279,6 +398,19 @@ jobs:
             cp -r artifacts/gui-winui/. bundle-stage/app/gui/KiwixWinUI/
             echo "  WinUI 3: $(find bundle-stage/app/gui/KiwixWinUI -type f | wc -l) files"
           fi
+          # The Avalonia build is ~94 MB (self-contained .NET + Skia) and is the
+          # second front-end: src/launcher/winlauncher.c spawns
+          # app\gui\KiwixApple\KiwixApple.exe when the WinUI one is absent, so
+          # the folder name and the depth are part of the contract with the
+          # launcher, not a packaging preference. Copy the *contents* into a
+          # directory this step creates, never artifacts/gui-apple itself: the
+          # latter nests the payload one level too deep and the launcher then
+          # finds no GUI at all.
+          if [ -d artifacts/gui-apple ]; then
+            mkdir -p bundle-stage/app/gui/KiwixApple
+            cp -r artifacts/gui-apple/. bundle-stage/app/gui/KiwixApple/
+            echo "  Avalonia: $(find bundle-stage/app/gui/KiwixApple -type f | wc -l) files"
+          fi
           for d in linux-x86_64 windows-x86_64 docker; do
             if [ -d "app/$d" ]; then cp -r "app/$d" bundle-stage/app/; fi
           done
@@ -289,7 +421,7 @@ jobs:
         run: |
           missing=0
           for f in app/gui/KiwixUSB.exe app/gui/KiwixUSB-linux-x86_64 \
-                   app/gui/KiwixWinUI/KiwixWinUI.exe Kiwix.exe \
+                   app/gui/KiwixWinUI/KiwixWinUI.exe app/gui/KiwixApple/KiwixApple.exe Kiwix.exe \
                    app/linux-x86_64/kiwix-serve app/windows-x86_64/kiwix-serve.exe \
                    app/docker/kiwix-serve-legacy.tar start.sh start-gui.cmd; do
             if [ -f "bundle-stage/$f" ]; then
@@ -312,6 +444,29 @@ jobs:
             echo "::error::WinUI 3 payload is truncated ($n files, expected >= 300)"
             exit 1
           fi
+          # Same for the Avalonia payload, and same floor style: whole or broken.
+          m=$(find bundle-stage/app/gui/KiwixApple -type f | wc -l)
+          echo "  Avalonia runtime files: $m"
+          if [ "$m" -lt 150 ]; then
+            echo "::error::Avalonia payload is truncated ($m files, expected >= 150)"
+            exit 1
+          fi
+          # And it has to be a *folder* at the path the launcher looks up. A
+          # payload flattened into app/gui/ next to KiwixUSB.exe still produces
+          # a bundle that starts, because the tkinter fallback is right there;
+          # it just silently loses the entire Avalonia front-end. Assert the
+          # shape, not just the presence of one exe.
+          stray=$(find bundle-stage/app/gui -maxdepth 1 -type f \
+                    \( -name 'KiwixApple*' -o -name 'KiwixWinUI*' -o -name 'av_lib*' \
+                       -o -name 'libSkiaSharp*' -o -name 'libHarfBuzzSharp*' \
+                       -o -name '*.deps.json' -o -name '*.runtimeconfig.json' \) | wc -l)
+          if [ "$stray" -ne 0 ]; then
+            echo "::error::$stray GUI runtime file(s) landed flat in app/gui/ instead of in their own subfolder:"
+            find bundle-stage/app/gui -maxdepth 1 -type f | sed 's/^/  /'
+            exit 1
+          fi
+          echo "  app/gui layout:"
+          find bundle-stage/app/gui -maxdepth 2 -type d | sort | sed 's/^/    /'
       - name: Assert no ZIM payloads slipped in
         run: |
           if find bundle-stage -iname '*.zim' | grep -q .; then

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -39,11 +39,12 @@
       bundle. The header now reads this at runtime, and test-gui-start.ps1
       compares what is displayed against this value, so bumping the version here
       and forgetting the rest fails the build instead of shipping a lie.
+
+       The number itself now lives one level up, in src/Directory.Build.props,
+       because there are three executables in a bundle and each declaring
+       its own copy is how they drift apart. The native launcher stub has no
+       project file and parses that same props file.
     -->
-    <Version>1.2.1</Version>
-    <AssemblyVersion>1.2.1.0</AssemblyVersion>
-    <FileVersion>1.2.1.0</FileVersion>
-    <InformationalVersion>1.2.1</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

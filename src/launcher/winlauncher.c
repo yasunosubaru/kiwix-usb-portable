@@ -14,7 +14,8 @@
  *     for zim\ plus app\ -- the same rule KiwixService.ResolveRoot
  *     uses, so the two can never disagree about where the bundle is.
  *  2. Starts app\gui\KiwixWinUI\KiwixWinUI.exe (the WinUI 3 build).
- *  3. Falls back to app\gui\KiwixUSB.exe (the tkinter single file).
+ *  3. Falls back to app\gui\KiwixApple\KiwixApple.exe (Avalonia, Apple HIG).
+ *  4. Falls back to app\gui\KiwixUSB.exe (the tkinter single file).
  *  4. If neither exists, shows a dialog naming both expected paths
  *     instead of failing silently.
  *
@@ -116,19 +117,27 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE hPrev, PWSTR cmdLine, int nShow)
         return 2;
     }
 
-    wchar_t winui[MAX_PATH], tk[MAX_PATH];
-    join(winui, root, L"app\\gui\\KiwixWinUI\\KiwixWinUI.exe");
+    wchar_t winui[MAX_PATH], apple[MAX_PATH], tk[MAX_PATH];
+    join(winui,  root, L"app\\gui\\KiwixWinUI\\KiwixWinUI.exe");
+    join(apple, root, L"app\\gui\\KiwixApple\\KiwixApple.exe");
     join(tk,    root, L"app\\gui\\KiwixUSB.exe");
 
-    if (is_file(winui) && spawn(winui, root)) return 0;
+    /* Order matters and is deliberate. The WinUI 3 build is the primary GUI.
+     * The Avalonia build is second: also self-contained, so a machine that
+     * cannot run WinUI 3 for want of the Windows App Runtime can still run it,
+     * and it is the build styled after Apple's Human Interface Guidelines. The
+     * tkinter single file is last because it is the smallest and the most
+     * conservative fallback. */
+    if (is_file(winui)  && spawn(winui,  root)) return 0;
+    if (is_file(apple) && spawn(apple, root)) return 0;
     if (is_file(tk)    && spawn(tk,    root)) return 0;
 
     wchar_t text[2048];
     _snwprintf_s(text, 2048, _TRUNCATE,
-        L"整合包里没有找到任何图形启动器。\n\n已查找：\n%s\n\n和：\n%s\n\n"
+        L"整合包里没有找到任何图形启动器。\n\n已查找：\n%s\n\n和：\n%s\n\n和：\n%s\n\n"
         L"请重新解压完整的整合包，或检查安全软件是否把这些文件隔离了。\n\n"
         L"整合包根目录：%s",
-        winui, tk, root);
+        winui, apple, tk, root);
     report(L"无法启动", text);
     return 3;
 }

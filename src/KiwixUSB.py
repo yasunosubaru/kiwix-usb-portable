@@ -33,7 +33,7 @@ from tkinter.scrolledtext import ScrolledText
 
 APP_NAME = "Kiwix 离线维基"
 APP_SUB = "便携版"
-APP_VER = "1.2.1"   # keep in step with <Version> in KiwixWinUI.csproj
+APP_VER = "1.2.2"   # keep in step with <Version> in src/Directory.Build.props
 KIWIX_VER = "3.8.2"
 DEFAULT_PORT = 8092
 BASELINE_NAME = "SHA256_原机基线.txt"

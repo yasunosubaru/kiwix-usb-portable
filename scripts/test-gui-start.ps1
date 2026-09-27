@@ -141,17 +141,24 @@ if ($hasServe) {
     Write-Host "  -- no kiwix-serve under $bundleRoot, so 未知 is expected --"
     Check ($ver -match 'kiwix-tools\s+未知') "header says 未知 when there is no binary to ask", $ver
 }
-# Compare against the csproj rather than just checking that a number is there:
-# the window once displayed v1.1.2 inside a v1.2.0 bundle, and a regex would
-# have called that a pass.
-$csproj = Join-Path (Split-Path -Parent $Exe) '..\..\..\..\src\KiwixWinUI\KiwixWinUI.csproj'
-if (-not (Test-Path $csproj)) { $csproj = Join-Path $PSScriptRoot '..\src\KiwixWinUI\KiwixWinUI.csproj' }
+# Compare against the declared version rather than just checking that a number is
+# there: the window once displayed v1.1.2 inside a v1.2.0 bundle, and a regex
+# would have called that a pass.
+#
+# The number lives in src/Directory.Build.props, not in this project's csproj.
+# There are three executables in a bundle and MSBuild picks that file up
+# automatically for every project under src/, which is what stops them drifting
+# apart. Reading the csproj here instead reported "unknown" and failed the build
+# for the right reason at the wrong file.
+$props = Join-Path (Split-Path -Parent $Exe) '..\..\..\..\src\Directory.Build.props'
+if (-not (Test-Path $props)) { $props = Join-Path $PSScriptRoot '..\src\Directory.Build.props' }
 $expect = 'unknown'
-if (Test-Path $csproj) {
-    $m = [regex]::Match((Get-Content $csproj -Raw), '<Version>([^<]+)</Version>')
+if (Test-Path $props) {
+    $m = [regex]::Match((Get-Content $props -Raw), '<Version>([^<]+)</Version>')
     if ($m.Success) { $expect = $m.Groups[1].Value.Trim() }
 }
-Check ($ver -match ('v' + [regex]::Escape($expect) + '\b')) "header version matches the csproj", "want v$expect, header: $ver"
+if ($expect -eq 'unknown') { throw "could not read <Version> from $props" }
+Check ($ver -match ('v' + [regex]::Escape($expect) + '\b')) "header version matches the declared version", "want v$expect, header: $ver"
 Check ((Invoke-Button $root 'StartButton') -eq 'invoked') "启动服务 can be pressed"
 
 Start-Sleep -Seconds 4

@@ -1,0 +1,222 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="KiwixApple.Views.MainWindow"
+        Title="Kiwix 离线维基 · 便携版"
+        Width="900"
+        Height="720"
+        MinWidth="640"
+        MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource SystemGroupedBackground}"
+        FontFamily="{StaticResource AppleFont}">
+
+  <Grid RowDefinitions="52,*">
+
+    <!-- ==========================================================
+         Navigation bar. UIKit's large-title bar: the big title scrolls
+         away with the content and, once it is gone, a small inline
+         title fades in on top of an opaque backdrop with a hairline
+         under it. The backdrop is what makes the bar read as a bar
+         rather than as loose text floating over the list.
+         ========================================================== -->
+    <Grid Grid.Row="0">
+      <Border Name="NavBackdrop" Background="{DynamicResource SystemGroupedBackground}" Opacity="0" />
+      <Border Name="NavHairline" Height="1" VerticalAlignment="Bottom" Background="{DynamicResource Separator}" Opacity="0" />
+
+      <TextBlock Name="InlineTitle"
+                 Text="Kiwix 离线维基"
+                 FontSize="{StaticResource SizeHeadline}"
+                 FontWeight="SemiBold"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center"
+                 Opacity="0"
+                 AutomationProperties.AutomationId="InlineTitleText" />
+
+      <Border Name="BadgeBorder"
+              Classes="badgeIdle"
+              CornerRadius="{StaticResource RadiusSmall}"
+              Padding="10,3,10,3"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Center"
+              Margin="0,0,16,0">
+        <TextBlock Name="BadgeText"
+                   Classes="caption1 badgeIdle"
+                   FontWeight="SemiBold"
+                   Text="未运行"
+                   AutomationProperties.AutomationId="BadgeText" />
+      </Border>
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Name="ContentScroll" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="16,4,16,32">
+
+        <!-- Large title: the first thing in the scroll content, so it
+             scrolls off exactly as UIKit's does. -->
+        <StackPanel Margin="0,8,0,20">
+          <TextBlock Classes="largeTitle" Text="Kiwix 离线维基" AutomationProperties.AutomationId="LargeTitleText" />
+          <TextBlock Classes="subhead"
+                     Foreground="{DynamicResource SecondaryLabel}"
+                     TextWrapping="Wrap"
+                     Margin="0,4,0,0"
+                     Text="便携版 · 直接从 U 盘运行，不安装、不联网、不改动内容库" />
+        </StackPanel>
+
+        <!-- ======================================================
+             服务
+             ====================================================== -->
+        <StackPanel Spacing="8" Margin="0,0,0,24">
+          <TextBlock Classes="sectionHeader" Name="HeaderService" Text="服务" />
+
+          <Border Classes="group">
+            <StackPanel>
+              <Grid ColumnDefinitions="*,Auto" MinHeight="44">
+                <TextBlock Grid.Column="0" Text="端口" VerticalAlignment="Center" />
+                <TextBox Name="PortBox"
+                         Grid.Column="1"
+                         Theme="{StaticResource AppleTextField}"
+                         Width="112"
+                         Text="8092"
+                         TextAlignment="Right"
+                         VerticalAlignment="Center"
+                         AutomationProperties.AutomationId="PortBox" />
+              </Grid>
+
+              <Border Classes="separator" />
+
+              <Grid ColumnDefinitions="*,Auto" MinHeight="44">
+                <TextBlock Grid.Column="0" Text="局域网地址" VerticalAlignment="Center" />
+                <TextBlock Name="UrlText" Grid.Column="1" Classes="rowValue" Text="—"
+                           VerticalAlignment="Center" AutomationProperties.AutomationId="UrlText" />
+              </Grid>
+
+              <Border Classes="separator" />
+
+              <Grid ColumnDefinitions="*,Auto" MinHeight="44">
+                <TextBlock Grid.Column="0" Text="进程" VerticalAlignment="Center" />
+                <TextBlock Name="RuntimeText" Grid.Column="1" Classes="rowValue" Text=""
+                           VerticalAlignment="Center" AutomationProperties.AutomationId="RuntimeText" />
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <!-- Filled / tinted pairs on an 8pt grid, each at least 44pt tall. -->
+          <StackPanel Spacing="8" Margin="0,8,0,0">
+            <Grid ColumnDefinitions="*,*">
+              <Button Name="StartButton"
+                      Grid.Column="0"
+                      Theme="{StaticResource AppleButton}"
+                      Classes="filled footer"
+                      Content="启动服务"
+                      Margin="0,0,4,0"
+                      AutomationProperties.AutomationId="StartButton" />
+              <Button Name="StopButton"
+                      Grid.Column="1"
+                      Theme="{StaticResource AppleButton}"
+                      Classes="tinted footer"
+                      Content="停止服务"
+                      Margin="4,0,0,0"
+                      AutomationProperties.AutomationId="StopButton" />
+            </Grid>
+            <Grid ColumnDefinitions="*,*">
+              <Button Name="OpenButton"
+                      Grid.Column="0"
+                      Theme="{StaticResource AppleButton}"
+                      Classes="filled footer"
+                      Content="打开资料库"
+                      Margin="0,0,4,0"
+                      AutomationProperties.AutomationId="OpenButton" />
+              <Button Name="CopyUrlButton"
+                      Grid.Column="1"
+                      Theme="{StaticResource AppleButton}"
+                      Classes="tinted footer"
+                      Content="复制地址"
+                      Margin="4,0,0,0"
+                      AutomationProperties.AutomationId="CopyUrlButton" />
+            </Grid>
+          </StackPanel>
+
+          <TextBlock Name="StatusText"
+                     Classes="footnote statusIdle"
+                     TextWrapping="Wrap"
+                     Text="就绪"
+                     Margin="2,4,0,0"
+                     AutomationProperties.AutomationId="StatusText" />
+        </StackPanel>
+
+        <!-- ======================================================
+             启动前检查
+             ====================================================== -->
+        <StackPanel Spacing="8" Margin="0,0,0,24">
+          <TextBlock Classes="sectionHeader" Name="HeaderPreflight" Text="启动前检查" />
+          <Border Classes="group">
+            <StackPanel Name="PreflightPanel" />
+          </Border>
+        </StackPanel>
+
+        <!-- ======================================================
+             离线内容库
+             ====================================================== -->
+        <StackPanel Spacing="8" Margin="0,0,0,24">
+          <TextBlock Classes="sectionHeader" Name="HeaderLibrary" Text="离线内容库" />
+          <TextBlock Name="LibrarySummary"
+                     Classes="footnote"
+                     Foreground="{DynamicResource SecondaryLabel}"
+                     Text="正在读取 ... "
+                     AutomationProperties.AutomationId="LibrarySummary" />
+          <Border Classes="group">
+            <StackPanel Name="LibraryPanel" />
+          </Border>
+          <Button Name="VerifyButton"
+                  Theme="{StaticResource AppleButton}"
+                  Classes="tinted footer"
+                  Content="校验 SHA256"
+                  Margin="0,8,0,0"
+                  AutomationProperties.AutomationId="VerifyButton" />
+          <ProgressBar Name="VerifyProgress"
+                       Height="4"
+                       CornerRadius="2"
+                       Margin="0,8,0,0"
+                       Minimum="0"
+                       Maximum="100"
+                       Value="0"
+                       IsVisible="False"
+                       Foreground="{DynamicResource SystemBlue}"
+                       Background="{DynamicResource SystemFill}"
+                       AutomationProperties.AutomationId="VerifyProgress" />
+        </StackPanel>
+
+        <!-- ======================================================
+             运行日志
+             ====================================================== -->
+        <StackPanel Spacing="8" Margin="0,0,0,24">
+          <TextBlock Classes="sectionHeader" Name="HeaderLog" Text="运行日志" />
+          <Border Classes="group" Padding="12">
+            <TextBox Name="LogBox"
+                     Theme="{StaticResource AppleTextField}"
+                     FontFamily="{StaticResource AppleMonoFont}"
+                     FontSize="{StaticResource SizeCaption1}"
+                     Foreground="{DynamicResource SecondaryLabel}"
+                     CaretBrush="Transparent"
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="NoWrap"
+                     Height="180"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     AutomationProperties.AutomationId="LogBox" />
+          </Border>
+        </StackPanel>
+
+        <TextBlock Name="VersionText"
+                   Classes="caption1"
+                   Foreground="{DynamicResource TertiaryLabel}"
+                   TextWrapping="Wrap"
+                   AutomationProperties.AutomationId="VersionText" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- Alert sheet host. Last child of the root grid, so it is painted over
+         everything and catches every click while a decision is pending. -->
+    <Panel Name="AlertLayer" Grid.Row="0" Grid.RowSpan="2" IsVisible="False" />
+  </Grid>
+</Window>

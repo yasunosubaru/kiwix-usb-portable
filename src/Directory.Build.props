@@ -1,0 +1,25 @@
+﻿<!--
+  One version for the whole product, defined once.
+
+  There are three executables in a bundle and they must agree. The WinUI 3 build
+  used to carry its own copy of the number and the native launcher read it from
+  there, which is how a v1.1.2 window ended up inside a v1.2.0 bundle. Adding a
+  third front-end made the drift visible rather than fixing it: Avalonia
+  declared 1.0.0 while WinUI declared 1.2.1, in the same folder.
+
+  A Directory.Build.props at src/ is the only place MSBuild will pick up
+  automatically for every project beneath it, so both .csproj files now take
+  their version from here. Bump this one file.
+
+  The native launcher has no project file, so scripts/build-launcher.ps1 parses
+  the <Version> element out of this file. If you move or rename it, update that
+  script too. It fails loudly rather than falling back to a wrong number.
+-->
+<Project>
+  <PropertyGroup>
+    <Version>1.2.2</Version>
+    <AssemblyVersion>1.2.2.0</AssemblyVersion>
+    <FileVersion>1.2.2.0</FileVersion>
+    <InformationalVersion>1.2.2</InformationalVersion>
+  </PropertyGroup>
+</Project>

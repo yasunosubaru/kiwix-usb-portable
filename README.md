@@ -19,7 +19,7 @@
 | **不依赖 Docker** | 直接跑 kiwix 官方静态二进制 |
 | **也可装 Docker** | 附离线镜像 tar，飞牛/群晖上一键常驻 |
 | **GUI + 命令行** | 图形启动器带预检与自检；无桌面环境用 shell 脚本 |
-| **两套 Windows GUI** | **WinUI 3**（现代界面，默认）与 Python/tkinter 单文件版（11 MB 轻量备用）|
+| **三套 Windows GUI** | **WinUI 3**（主界面）、**Avalonia**（Apple 视觉风格）与 Python/tkinter 单文件版（11 MB 轻量备用）；`Kiwix.exe` 按此顺序回退 |
 
 已内置 kiwix-tools **3.8.2** 官方静态二进制（Linux x86_64 / Windows x86_64）。
 
@@ -35,12 +35,17 @@
 找到整合包、启动图形界面、然后自己退出。
 
 - 优先启动 **WinUI 3** 版（`app/gui/KiwixWinUI/`）
-- 该目录不存在时（例如精简整包），自动回退到 tkinter 单文件版（`app/gui/KiwixUSB.exe`）
-- 两个都不存在时弹出对话框说明缺了什么，而不是静默失败
+- 该目录不存在时（例如精简整包），先回退到 **Avalonia** 版
+  （`app/gui/KiwixApple/KiwixApple.exe`）
+- Avalonia 也不存在时，再回退到 tkinter 单文件版（`app/gui/KiwixUSB.exe`）
+- 三个都不存在时弹出对话框说明缺了什么，而不是静默失败
 
-图形界面有两版，功能与安全边界完全一致。`launcher/` 下另有
-`start-gui.cmd` / `启动Kiwix便携版.cmd` 两个脚本入口，作用相同，
-只是需要在有脚本宿主的环境里用。
+回退顺序是刻意的：WinUI 3 是主界面；Avalonia 排第二，因为它**同样自包含**，
+缺 Windows App Runtime 的机器仍能跑起来；tkinter 垫底，因为它最小、也最保守。
+
+图形界面有三版，功能与安全边界完全一致。`launcher/` 下另有 `start-gui.cmd`
+这个脚本入口，作用和 `Kiwix.exe` 相同，只是给需要有脚本宿主的环境用；它的
+回退链同样是 WinUI 3 → Avalonia → tkinter 三级。
 
 ### Linux 桌面
 ```bash
@@ -76,6 +81,7 @@ Kiwix-USB/
 └── app/
     ├── gui/                   GUI 启动器
     │   ├── KiwixWinUI/               Windows WinUI 3（自包含，约 166 MB）
+    │   ├── KiwixApple/               Windows Avalonia · Apple 风格（自包含，约 94 MB，需自行构建）
     │   ├── KiwixUSB.exe              Windows tkinter 单文件（约 11 MB）
     │   ├── KiwixUSB-linux-x86_64     Linux tkinter 单文件（glibc 2.36 基线）
     │   └── KiwixUSB.py               tkinter 版源码
@@ -101,13 +107,21 @@ powershell -File scripts\build-launcher.ps1
 # 2) Windows WinUI 3 启动器
 powershell -File scripts\build-winui.ps1
 
-# 3) Windows / Linux tkinter 单文件启动器
+# 3) Windows Avalonia 启动器（Apple 视觉风格）
+powershell -File src\KiwixApple\build-apple.ps1
+#   脚本会发布、校验产物，再把产物临时放进整包跑完 --selftest 与端到端测试
+#   然后删掉，不会把 94 MB 留在别人的 U 盘里。整包默认找仓库旁边的 Kiwix-USB\，
+#   也可以自己指定：-Bundle <整包路径>
+#   只发布、不测的话，等价于：
+#   dotnet publish src\KiwixApple\KiwixApple.csproj -c Release -r win-x64 --self-contained true -o app\gui\KiwixApple
 
-# 4) 下载 kiwix 官方静态二进制（不入库）
+# 4) Windows / Linux tkinter 单文件启动器
+
+# 5) 下载 kiwix 官方静态二进制（不入库）
 bash scripts/fetch-kiwix-binaries.sh          # Linux
 powershell -File scripts/fetch-kiwix-binaries.ps1   # Windows
 
-# 5) 打包 tkinter GUI
+# 6) 打包 tkinter GUI
 pip install -r requirements-build.txt
 python -m PyInstaller --onefile --windowed --name KiwixUSB src/KiwixUSB.py
 
@@ -118,9 +132,9 @@ bash scripts/build-linux-docker.sh
 ### 图标
 
 图标资产在 `src\branding\`，`make_icon.py` 可重新生成并自校验。
-两个 GUI 都带上了它（WinUI 3 走 csproj 的 `ApplicationIcon`，Tkinter 走
-PyInstaller 的 `--icon`），`scripts\verify-icon.ps1` 会在构建时确认图标
-真的存在且能被 Windows 渲染。
+三个 GUI 都带上了它（WinUI 3 与 Avalonia 都走 csproj 的 `ApplicationIcon`，
+Tkinter 走 PyInstaller 的 `--icon`），`scripts\verify-icon.ps1` 会在构建时
+确认图标真的存在且能被 Windows 渲染。
 
 整包根目录的 `Kiwix.exe` 不带图标：它只存在半秒就交给 GUI，而本机可用的
 资源编译路径都无法可靠地把图标嵌进原生 PE（详见 `scripts\build-launcher.ps1`
@@ -128,15 +142,22 @@ PyInstaller 的 `--icon`），`scripts\verify-icon.ps1` 会在构建时确认图
 
 ### 启动器自检
 
-两套启动器都能在无界面下自证可用：
+三套启动器都能在无界面下自证可用：
 
 ```powershell
 # WinUI 3：定位资料库 → 启动 kiwix-serve → 核对服务器实际加载的书目数 → 干净停止
 app\gui\KiwixWinUI\KiwixWinUI.exe --selftest
 
+# Avalonia 版：同一套断言
+app\gui\KiwixApple\KiwixApple.exe --selftest
+
 # tkinter 版：同一套断言
 app\gui\KiwixUSB.exe --selftest
 ```
+
+`--selftest` 与端到端测试都靠从 exe 向上找 `zim\` + `app\` 来定位整包，
+所以被测的 exe 必须待在整合包里面。`src\KiwixApple\build-apple.ps1` 会替你
+把产物临时放进去、跑完两项测试、再把它删掉。
 
 `scripts\build-winui.ps1` 在构建后会自动做一次启动检查；GitHub Actions 的
 `build-winui` job 同样会启动一次并确认进程存活。
@@ -204,4 +225,5 @@ A：118 GB 的英文维基检索确实吃 CPU、内存和磁盘带宽。资料�
 
 - [`docs/使用说明.md`](docs/使用说明.md) — 便携版完整使用手册
 - [`docs/NAS-部署方案.md`](docs/NAS-部署方案.md) — 飞牛 fnOS / 群晖部署与外网访问
+- [`src/KiwixApple/README.md`](src/KiwixApple/README.md) — Avalonia / Apple 视觉风格 GUI：为什么不是 UIKit，以及每条 HIG 对应到哪个文件
 - [`zim/README.md`](zim/README.md) — 资料库获取与格式要求
