@@ -1,1 +1,9 @@
+# Build-time dependencies for the Windows job.
+#
+# Pillow is here because src/branding/make_icon.py needs it, and that script is
+# not optional decoration: the job runs it with --verify-only to prove the icon
+# asset is complete, and without Pillow that step dies with
+# ModuleNotFoundError before it checks anything. The gate was added and the
+# dependency was not, and the first CI run caught exactly that.
 pyinstaller>=6.10,<7
+Pillow>=10.0,<13
