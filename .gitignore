@@ -14,8 +14,14 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
-src/KiwixWinUI/bin/
-src/KiwixWinUI/obj/
+# 任何 .NET 项目的构建产物（src/KiwixWinUI、src/KiwixApple ...）
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+xunit.abort.txt
+TestResults/
 
 # ---- 第三方二进制：由 scripts/fetch-* 下载获取，不入库 ----
 bundle/

@@ -26,13 +26,19 @@ jobs:
       - name: Build single-file GUI
         run: |
           python -m PyInstaller --noconfirm --clean --onefile --windowed `
-            --name KiwixUSB --distpath dist --workpath build --specpath . `
+            --name KiwixUSB --icon src/branding/kiwix.ico `
+            --distpath dist --workpath build --specpath . `
             src/KiwixUSB.py
       - name: Smoke test (binary must at least be well-formed PE)
         run: |
           $f = Get-Item dist\KiwixUSB.exe
           if ($f.Length -lt 5MB) { throw "suspiciously small executable" }
           Write-Host "OK $($f.Length) bytes"
+      - name: The launcher must carry the app icon
+        shell: pwsh
+        run: ./scripts/verify-icon.ps1 -Exe dist/KiwixUSB.exe
+      - name: The icon asset itself is complete
+        run: python src/branding/make_icon.py --verify-only
       # The bundle is opened by double-clicking an .exe, so the entry point is a
       # real native binary rather than a .cmd script. MSVC is already present on
       # the runner, so this needs no extra setup.
@@ -104,6 +110,9 @@ jobs:
           Write-Host "launch check OK (PID $($p.Id))"
           Stop-Process -Name KiwixWinUI -Force -ErrorAction SilentlyContinue
           Get-Process kiwix-serve -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+      - name: The WinUI executable must carry the app icon
+        shell: pwsh
+        run: ./scripts/verify-icon.ps1 -Exe "${{ runner.temp }}\winui\KiwixWinUI.exe"
       - name: Drive the real start button
         shell: pwsh
         run: |

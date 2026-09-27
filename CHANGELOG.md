@@ -2,6 +2,41 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.2] - 2026-09-27
+
+应用图标重做，并接入构建门禁。
+
+### 新增
+
+- **`src/branding/`：重做的应用图标**
+  - `kiwix.ico` 含 **10 个分辨率**（16/20/24/32/40/48/64/96/128/256），
+    全部 32 位 RGBA 带真实 alpha 通道
+  - 旧图标实际缺陷不是色深（同样是 32 位），而是**只有 3 个尺寸**、且是纯黑字配白底，
+    在深色任务栏上刺眼、在 16px 下糊成一团
+  - 新设计：深色圆角徽章 + 白绿双色 K。16px 下实测笔画最细 3px（垂直 3.09px），
+    字腔是真实的 V 形负空间，边缘做了像素对齐；绿色占整个右下腿而非一个小点，
+    所以缩到 16px 也不会消失
+  - `make_icon.py` 生成并自校验，`--verify-only` 可只跑校验；连跑产物字节一致
+  - `preview.png` 是所有分辨率的对照图，`README.md` 记录设计取舍
+- `scripts/verify-icon.ps1`：用 `ExtractIconEx`（资源管理器同一条 shell32 路径）
+  检查 exe 是否**真的带图标且能渲染**。图标缺失是静默故障——不报错、构建照样绿，
+  只有用户在资源管理器里看到空白页。1.1.x 的 WinUI 程序就完全没配图标而无人察觉
+- CI 两个 Windows job 都加上了该门禁
+
+### 变更
+
+- WinUI 3 程序接入图标：csproj 的 `<ApplicationIcon>`，由 MSBuild 自己生成
+  Win32 资源（不经过资源编译器）
+- Tkinter 程序改用仓库内的新图标（PyInstaller `--icon`）
+- `Kiwix.exe`（原生启动壳）**不带图标**，原因记录在
+  `scripts/build-launcher.ps1` 里：本机可用的每条嵌入路径都试过且都失败——
+  三个 Windows SDK 版本的 rc.exe 都在 ICON 语句上返回 RC2135（任意路径形式、
+  任意 .ico，包括 Pillow 自己写的 2 KB 图标，而同一份 rc.exe 的 `#include`
+  和 VERSIONINFO 正常）；mingw 的 windres 同样拒绝该语句；手工构造的 COFF
+  .res 能被 link.exe 接受，但产出的资源树 shell 无法枚举——**即使字节是从
+  MSBuild 生成的 exe 里原样提取的**。两个真正会被长时间看到的 GUI 都有图标，
+  而这个壳只存在半秒
+
 ## [1.2.1] - 2026-09-27
 
 版本号不再靠手改。

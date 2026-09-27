@@ -18,6 +18,14 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
 
+    <!--
+      Without this the exe carries no RT_GROUP_ICON and Windows shows the
+      generic blank-page icon in Explorer and on the taskbar. MSBuild emits the
+      Win32 resources itself, so unlike the native launcher this needs no
+      resource compiler. Ten resolutions, 32-bit alpha; see src\branding.
+    -->
+    <ApplicationIcon>..\branding\kiwix.ico</ApplicationIcon>
+
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>

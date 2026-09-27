@@ -66,7 +66,7 @@ sudo sh install-fnos.sh      # 脚本名随发行版而定，见 docs/
 
 ```
 Kiwix-USB/
-├── Kiwix.exe                  Windows 双击入口（原生 Win32，约 130 KB）
+├── Kiwix.exe                  Windows 双击入口（原生 Win32，约 130 KB，无内嵌图标）
 ├── start-gui.cmd              同上，脚本版备用
 ├── start.sh / stop.sh         Linux 命令行启停
 ├── install-fnos.sh            NAS 一键常驻部署（Docker）
@@ -92,6 +92,9 @@ Kiwix-USB/
 git clone <this-repo>
 cd <this-repo>
 
+# 0) 重新生成应用图标（可选，产物已入库）
+python src\branding\make_icon.py
+
 # 1) Windows 入口（原生 Win32，双击用的那个）
 powershell -File scripts\build-launcher.ps1
 
@@ -111,6 +114,17 @@ python -m PyInstaller --onefile --windowed --name KiwixUSB src/KiwixUSB.py
 # Linux 产物必须在 Debian 12 基线上构建，否则 glibc 过高无法在 NAS 上运行
 bash scripts/build-linux-docker.sh
 ```
+
+### 图标
+
+图标资产在 `src\branding\`，`make_icon.py` 可重新生成并自校验。
+两个 GUI 都带上了它（WinUI 3 走 csproj 的 `ApplicationIcon`，Tkinter 走
+PyInstaller 的 `--icon`），`scripts\verify-icon.ps1` 会在构建时确认图标
+真的存在且能被 Windows 渲染。
+
+整包根目录的 `Kiwix.exe` 不带图标：它只存在半秒就交给 GUI，而本机可用的
+资源编译路径都无法可靠地把图标嵌进原生 PE（详见 `scripts\build-launcher.ps1`
+里的记录）。
 
 ### 启动器自检
 

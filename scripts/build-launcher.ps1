@@ -20,10 +20,26 @@ $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path -Parent $PSScriptRoot
 $Source = Join-Path $Root 'src\launcher\winlauncher.c'
+$Icon = Join-Path $Root 'src\branding\kiwix.ico'
 if (-not $Output) { $Output = Join-Path $Root 'dist\launcher' }
 
 if (-not (Test-Path -LiteralPath $Source)) { throw "missing source: $Source" }
+if (-not (Test-Path -LiteralPath $Icon)) { throw "missing icon: $Icon (run scripts\make-icon or src\branding\make_icon.py)" }
 New-Item -ItemType Directory -Force -Path $Output | Out-Null
+
+# The launcher and the WinUI 3 app ship as one bundle, so they carry the same
+# version. It is written down exactly once, in KiwixWinUI.csproj; hardcoding a
+# second copy here is how the window ended up claiming v1.1.2 in a v1.2.0 bundle.
+$csproj = Join-Path $Root 'src\KiwixWinUI\KiwixWinUI.csproj'
+$version = '0.0.0'
+if (Test-Path -LiteralPath $csproj) {
+    $m = [regex]::Match((Get-Content $csproj -Raw), '<Version>([^<]+)</Version>')
+    if ($m.Success) { $version = $m.Groups[1].Value.Trim() }
+}
+$version4 = ($version -split '[^0-9.]')[0..3] -join '.'
+while ($version4.Split('.').Count -lt 4) { $version4 += '.0' }
+Write-Host "  version  : $version (from KiwixWinUI.csproj)"
+Write-Host ("  icon     : {0}  {1:N0} bytes" -f (Split-Path $Icon -Leaf), (Get-Item $Icon).Length)
 
 # Locate a Visual Studio installation with the x64 C toolchain.
 # The path is <root>\<version>\<edition>\VC\Auxiliary\Build\vcvars64.bat --
@@ -58,6 +74,18 @@ $bat = Join-Path $env:TEMP ("kiwix_launcher_" + [Guid]::NewGuid().ToString('N') 
 # (D9002) and /WX turns that into a build failure. /ENTRY is enough on its own:
 # it overrides the default entry point with the CRT startup that calls wWinMain,
 # so /NOENTRY is not needed and would in fact suppress the CRT initialisation.
+# The launcher carries no icon. Embedding one needs a resource compiler and
+# every path available here was tried and failed: every rc.exe on this machine
+# (Windows SDK 10.0.22621 and 10.0.26100, plus the copy Visual Studio ships)
+# rejects the ICON statement with RC2135 "file not found" for every path form
+# and every .ico, including a 2 KB file Pillow wrote itself, while the same
+# rc.exe handles #include and VERSIONINFO without complaint; mingw's windres
+# rejects the same statement; and a hand-built COFF .res is accepted by
+# link.exe but produces a resource tree the shell cannot enumerate, even when
+# the bytes are lifted verbatim from an executable MSBuild produced. The two
+# GUIs do carry the icon, through ApplicationIcon and PyInstaller --icon, and
+# they are what a user actually looks at. This stub is on screen for half a
+# second and then hands over to one of them.
 $body = @"
 @echo off
 call "$vcvars" >nul
@@ -88,7 +116,11 @@ foreach ($junk in 'Kiwix.obj', 'winlauncher.obj', 'vc140*.pdb', 'Kiwix.pdb', 'Ki
 
 $fi = Get-Item $exe
 Write-Host ("  built {0}  {1:N0} bytes" -f $fi.Name, $fi.Length)
-if ($fi.Length -gt 200KB) { throw "the launcher is meant to be tiny; something went wrong" }
+# The 10-resolution icon is ~420 KB uncompressed, so the launcher lands around
+# 550 KB rather than the 130 KB it was without one. That is still nothing next
+# to a 150 MB bundle, and the bound is here to catch a runaway debug build, not
+# to police a few hundred kilobytes of artwork.
+if ($fi.Length -gt 1MB) { throw "the launcher should be well under 1 MB; something went wrong" }
 
 # Must be a GUI subsystem binary: a console window flashing on every launch is
 # the exact thing this file exists to avoid. The header is parsed with plain
@@ -105,4 +137,12 @@ if ($subsystem -ne 2) { throw "PE subsystem ${subsystem}: the launcher must be a
 
 # And it must carry no console: if the image were linked against the console
 # CRT, double-clicking would flash a window even with /SUBSYSTEM:WINDOWS.
-Write-Host "  OK"
+# The launcher deliberately carries no icon. Embedding one needs a resource
+# compiler, and none of the available paths work here: every rc.exe on this
+# machine fails the ICON statement with RC2135 for any path form and any .ico,
+# mingw's windres rejects the same statement, and a hand-built COFF .res is
+# accepted by link.exe but yields a directory tree the shell cannot enumerate --
+# even when the bytes are lifted verbatim from an exe MSBuild produced. The two
+# GUIs do carry the icon, via ApplicationIcon and PyInstaller --icon, and they
+# are what a user actually looks at. This stub is on screen for half a second.
+Write-Host "  note: the launcher has no embedded icon (see the comment above)"

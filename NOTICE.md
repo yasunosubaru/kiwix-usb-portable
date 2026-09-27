@@ -57,6 +57,9 @@ GUI 启动器与 kiwix-serve 之间没有版本耦合（它们只是通过命令
 | `app/gui/KiwixUSB.exe` | Python 3 + tkinter | 单文件，约 11 MB | Python **PSF**；PyInstaller **GPL-2.0-or-later**（附 bootloader 例外条款）；Tcl/Tk **BSD-style** |
 | `app/gui/KiwixUSB-linux-x86_64` | Python 3 + tkinter | 单文件，约 12 MB | 同上 |
 
+应用图标（`src\branding\kiwix.ico`）为本项目原创设计，由 `make_icon.py` 程序化生成，
+不含任何第三方素材或字体轮廓；所用配色取自本项目界面自身的调色板。
+
 整包根目录的 `Kiwix.exe` 是入口：一个约 130 KB 的原生 Win32 程序（`src/launcher/winlauncher.c`），
 只依赖 `user32.dll` / `kernel32.dll`，不引入任何第三方组件。优先启动 WinUI 3 版；
 该目录不存在时自动回退到 tkinter 单文件版。`launcher/` 下的 `.cmd` 是等价的脚本入口。
